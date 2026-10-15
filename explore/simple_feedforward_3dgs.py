@@ -16,7 +16,15 @@ app = modal.App("feedforward-3dgs")
 # Create Modal image with all dependencies
 image = (
     modal.Image.debian_slim(python_version="3.10")
-    .apt_install("git", "libgl1", "libglib2.0-0")  # Add OpenGL libraries for opencv
+    .apt_install(
+        "git",
+        "libgl1-mesa-glx",  # OpenGL library for opencv
+        "libglib2.0-0",     # GLib library for opencv
+        "libsm6",           # Session Management library
+        "libxext6",         # X extensions library
+        "libxrender1",      # X Rendering library
+        "libgomp1",         # GNU OpenMP library
+    )
     .pip_install(
         "torch==2.4.0",
         "torchvision==0.19.0",
@@ -53,11 +61,11 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
 
 @app.function(
     image=image,
-    gpu="T4",  # Cost-optimized GPU (can upgrade to A10G if needed)
+    gpu="A10G",  # 24GB GPU (T4 14GB insufficient for 16 images)
     timeout=3600,  # 1 hour timeout
     volumes={"/data": data_volume},
 )
-def run_inference(input_dir: str = "tomato-bed-tiny", output_dir: str = "tomato-bed-tiny"):
+def run_inference(dataset_tag: str = "tomato-bed-tiny"):
     """Run WorldMirror inference on input images."""
     import glob
     import torch
@@ -70,7 +78,7 @@ def run_inference(input_dir: str = "tomato-bed-tiny", output_dir: str = "tomato-
     from src.utils.inference_utils import prepare_images_to_tensor
     from src.utils.save_utils import save_gs_ply
 
-    print(f"Starting inference for {input_dir}")
+    print(f"Starting inference for dataset '{dataset_tag}'")
 
     # Setup device
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -82,7 +90,7 @@ def run_inference(input_dir: str = "tomato-bed-tiny", output_dir: str = "tomato-
     model.eval()
 
     # Load input images
-    input_path = Path("/data/incoming") / input_dir
+    input_path = Path("/data/incoming") / dataset_tag
     img_paths = sorted(glob.glob(str(input_path / "*.jpg")) + glob.glob(str(input_path / "*.png")))
 
     if not img_paths:
@@ -105,7 +113,7 @@ def run_inference(input_dir: str = "tomato-bed-tiny", output_dir: str = "tomato-
         predictions = model(views=views, cond_flags=cond_flags)
 
     # Save Gaussian Splat output
-    output_path = Path("/data/output") / output_dir
+    output_path = Path("/data/output") / dataset_tag
     output_path.mkdir(parents=True, exist_ok=True)
 
     if "splats" in predictions:
@@ -151,11 +159,8 @@ def run_inference(input_dir: str = "tomato-bed-tiny", output_dir: str = "tomato-
 
 
 @app.local_entrypoint()
-def main(
-    input_dir: str = "tomato-bed-tiny",
-    output_dir: str = "tomato-bed-tiny",
-):
+def main(dataset_tag: str = "tomato-bed-tiny"):
     """Local entrypoint to run inference on Modal."""
-    print(f"Launching Modal inference for {input_dir}")
-    run_inference.remote(input_dir=input_dir, output_dir=output_dir)
-    print(f"Results will be in Modal volume at /data/output/{output_dir}")
+    print(f"Launching Modal inference for dataset '{dataset_tag}'")
+    run_inference.remote(dataset_tag=dataset_tag)
+    print(f"Results will be in Modal volume at /data/output/{dataset_tag}")

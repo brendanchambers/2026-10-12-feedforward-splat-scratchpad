@@ -11,56 +11,48 @@ uv run --with modal modal setup
 
 ## Usage
 
-### 1. Upload input images to Modal volume
+### Quick Start: Full Pipeline
+
+Run the complete workflow (upload → inference → download) with a single command:
+
 ```bash
-uv run --with modal modal run explore/upload_data.py
+# Basic usage (reads from data/incoming/my-images/)
+uv run --with modal modal run explore/pipeline.py --dataset-tag my-images
+
+# With custom images directory
+uv run --with modal modal run explore/pipeline.py --dataset-tag my-run --images-dir path/to/images
+
+# Skip upload if data already on Modal
+uv run --with modal modal run explore/pipeline.py --dataset-tag my-images --skip-upload
+
+# Just run inference (no download)
+uv run --with modal modal run explore/pipeline.py --dataset-tag my-images --skip-download
 ```
 
-### 2. Run inference on Modal GPU
-```bash
-uv run --with modal modal run explore/simple_feedforward_3dgs.py
-```
+### Individual Steps
 
-**Note**: First run will take ~10-15 minutes to build the Modal image (PyTorch, gsplat, WorldMirror). Subsequent runs use the cached image and are much faster.
-
-### 3. Download results from Modal volume
-```bash
-uv run --with modal modal run explore/download_results.py
-```
-
-## Output
-
-Results will be saved to `data/output/tomato-bed-tiny/`:
-- `gaussians.ply` - 3D Gaussian Splat (main output)
-- `pts_from_pointmap.ply` - Point cloud
-
-## Custom Inputs
-
-To process different images:
+All scripts use `--dataset-tag` to organize outputs. By default, images are read from `data/incoming/{dataset-tag}/`, but you can specify a custom path with `--images-dir`.
 
 ```bash
-# Upload custom data
-uv run --with modal modal run explore/upload_data.py \
-  --local-dir data/incoming/my-images \
-  --remote-dir my-images
+# Upload data (default: from data/incoming/my-images/)
+uv run --with modal modal run explore/upload_data.py --dataset-tag my-images
+
+# Or use a custom images directory
+uv run --with modal modal run explore/upload_data.py --dataset-tag my-run --images-dir path/to/images
 
 # Run inference
-uv run --with modal modal run explore/simple_feedforward_3dgs.py \
-  --input-dir my-images \
-  --output-dir my-images
+uv run --with modal modal run explore/simple_feedforward_3dgs.py --dataset-tag my-images
 
-# Download results
-uv run --with modal modal run explore/download_results.py \
-  --remote-dir my-images \
-  --local-dir data/output/my-images
+# Download results (to data/output/my-images/)
+uv run --with modal modal run explore/download_results.py --dataset-tag my-images
 ```
 
 ## GPU Configuration
 
-The script uses a T4 GPU by default (cost-optimized). To use a more powerful GPU, edit `simple_feedforward_3dgs.py` and change:
+The script uses an A10G GPU (24GB VRAM required for 16 images). For smaller datasets (fewer images), you can use a T4 GPU by editing `simple_feedforward_3dgs.py`:
 
 ```python
-gpu="T4"  # Options: "T4", "A10G", "A100"
+gpu="A10G"  # Options: "T4" (14GB), "A10G" (24GB), "A100" (40GB)
 ```
 
 ## Viewing Results
