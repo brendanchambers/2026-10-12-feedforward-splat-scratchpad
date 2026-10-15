@@ -15,7 +15,7 @@ uv run --with modal modal setup
 
 Run the complete workflow (upload → inference → optimize → download) with a single command.
 
-**Recommended usage** (fresh run with all options):
+**Recommended usage** (fresh run with optimization):
 ```bash
 uv run --with modal modal run explore/pipeline.py \
   --dataset-tag tomato-small \
@@ -31,6 +31,22 @@ This command:
 - Runs feedforward inference with verbose output
 - Runs post-processing optimization (500 steps)
 - Downloads results to `data/output/tomato-small/`
+
+**Fast iteration** (skip optimization, keep data):
+```bash
+uv run --with modal modal run explore/pipeline.py \
+  --dataset-tag tomato-tiny \
+  --images-dir data/incoming/tomato-tiny/images \
+  --skip-optimize \
+  --verbose
+```
+
+This command:
+- Uses existing data if available (no deletion)
+- Uploads from default location `data/incoming/tomato-small/`
+- Runs feedforward inference only (faster)
+- Downloads results immediately
+- Good for quick testing and iteration
 
 **Other common patterns**:
 ```bash
