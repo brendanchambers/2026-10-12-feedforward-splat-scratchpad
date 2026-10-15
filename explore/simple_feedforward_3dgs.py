@@ -40,10 +40,18 @@ image = (
         "trimesh",
         "plyfile",
         "opencv-python",
-        "rich",
+        "rich==13.3.5",
         "torchmetrics",
         "jaxtyping",
         "ninja",
+        "onnxruntime",
+        "pycolmap==3.10.0",
+        "scipy",
+        "matplotlib",
+        "moviepy==1.0.3",
+        "lpips",
+        "viser",
+        "colorspacious",
     )
     .pip_install(
         "gsplat",
@@ -64,109 +72,73 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
     timeout=3600,  # 1 hour timeout
     volumes={"/data": data_volume},
 )
-def run_inference(dataset_tag: str = "tomato-bed-tiny"):
-    """Run WorldMirror inference on input images."""
-    import glob
-    import torch
-    from PIL import Image
+def run_inference(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, save_colmap: bool = True):
+    """Run WorldMirror inference on input images with optional COLMAP output."""
+    import subprocess
+    import shutil
 
-    # Add WorldMirror repo to path
-    sys.path.insert(0, "/root/repo/repos/HunyuanWorld-Mirror")
-
-    from src.models.models.worldmirror import WorldMirror
-    from src.utils.inference_utils import prepare_images_to_tensor
-    from src.utils.save_utils import save_gs_ply
+    # Reload volume to see latest uploaded data
+    data_volume.reload()
 
     print(f"Starting inference for dataset '{dataset_tag}'")
 
-    # Setup device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
-    # Load model from HuggingFace
-    print("Loading WorldMirror model...")
-    model = WorldMirror.from_pretrained("tencent/HunyuanWorld-Mirror").to(device)
-    model.eval()
-
-    # Load input images
+    # Setup paths
     input_path = Path("/data/incoming") / dataset_tag
-    img_paths = sorted(glob.glob(str(input_path / "*.jpg")) + glob.glob(str(input_path / "*.png")))
-
-    if not img_paths:
-        raise ValueError(f"No images found in {input_path}")
-
-    print(f"Found {len(img_paths)} images")
-
-    # Preprocess images
-    imgs = prepare_images_to_tensor(img_paths, target_size=518, resize_strategy="crop").to(device)
-    B, S, C, H, W = imgs.shape
-    print(f"Image tensor shape: {imgs.shape}")
-
-    # Prepare input
-    views = {"img": imgs}
-    cond_flags = [0, 0, 0]  # No conditioning [pose, depth, intrinsics]
-
-    # TODO
-    # add a debug flag
-    # if --debug, visually verify the round trip image preprocessing.
-    # for a random input image, show the original image, print its size in pixels
-    # for the corresponding tensor held in imgs, visualize the tensor as a regular image, and print its size.
-    # make it possible to compare the image before and after preprocessing, perhaps side by side.
-
-    # Run inference
-    print("Running inference...")
-    with torch.no_grad():
-        predictions = model(views=views, cond_flags=cond_flags)
-
-    # Save Gaussian Splat output
     output_path = Path("/data/output") / dataset_tag
+
+    if not input_path.exists():
+        raise ValueError(f"Input directory does not exist: {input_path}")
+
     output_path.mkdir(parents=True, exist_ok=True)
 
-    if "splats" in predictions:
-        splats = predictions["splats"]
-        means = splats["means"][0].reshape(-1, 3)
-        scales = splats["scales"][0].reshape(-1, 3)
-        quats = splats["quats"][0].reshape(-1, 4)
-        opacities = splats["opacities"][0].reshape(-1)
+    # Copy images to output/images directory (required by COLMAP format)
+    images_output = output_path / "images"
+    images_output.mkdir(exist_ok=True)
 
-        # Handle SH or colors
-        if "sh" in splats:
-            colors = splats["sh"][0].reshape(-1, 3)
-        else:
-            colors = splats["colors"][0].reshape(-1, 3)
+    print(f"Copying images from {input_path} to {images_output}")
+    for img_file in input_path.glob("*"):
+        if img_file.suffix.lower() in ['.jpg', '.png', '.jpeg']:
+            shutil.copy2(img_file, images_output / img_file.name)
 
-        # Save PLY
-        ply_path = output_path / "gaussians.ply"
-        save_gs_ply(ply_path, means, scales, quats, colors, opacities)
-        print(f"Saved Gaussian Splat to {ply_path}")
+    # Change to repo directory
+    import os
+    os.chdir("/root/repo/repos/HunyuanWorld-Mirror")
 
-    # Also save point cloud if available
-    if "pts3d" in predictions:
-        from src.utils.save_utils import save_scene_ply
+    # Run official infer.py with COLMAP support
+    cmd = [
+        "python", "infer.py",
+        "--input_path", str(images_output),
+        "--output_path", str(output_path),
+        "--save_gs",
+        "--save_pointmap",
+    ]
 
-        pts_list = []
-        colors_list = []
+    if save_colmap:
+        cmd.append("--save_colmap")
 
-        for i in range(S):
-            pts = predictions["pts3d"][0, i].reshape(-1, 3)
-            img_colors = (imgs[0, i].permute(1, 2, 0) * 255).to(torch.uint8).reshape(-1, 3)
-            pts_list.append(pts)
-            colors_list.append(img_colors)
+    if not verbose:
+        cmd.append("--no-save_rendered")  # Skip video rendering for speed
 
-        all_pts = torch.cat(pts_list, dim=0)
-        all_colors = torch.cat(colors_list, dim=0)
+    print(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
-        ply_path = output_path / "pts_from_pointmap.ply"
-        save_scene_ply(ply_path, all_pts, all_colors)
-        print(f"Saved point cloud to {ply_path}")
+    if result.returncode != 0:
+        print("\n=== INFERENCE ERROR ===")
+        print("STDOUT:", result.stdout)
+        print("\nSTDERR:", result.stderr)
+        print("=======================\n")
+        raise RuntimeError(f"Inference failed with return code {result.returncode}")
+
+    # Print output
+    print(result.stdout)
 
     data_volume.commit()
     print("Inference complete!")
 
 
 @app.local_entrypoint()
-def main(dataset_tag: str = "tomato-bed-tiny"):
+def main(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, save_colmap: bool = True):
     """Local entrypoint to run inference on Modal."""
-    print(f"Launching Modal inference for dataset '{dataset_tag}'")
-    run_inference.remote(dataset_tag=dataset_tag)
+    print(f"Launching Modal inference for dataset '{dataset_tag}'{' (verbose mode)' if verbose else ''}")
+    run_inference.remote(dataset_tag=dataset_tag, verbose=verbose, save_colmap=save_colmap)
     print(f"Results will be in Modal volume at /data/output/{dataset_tag}")

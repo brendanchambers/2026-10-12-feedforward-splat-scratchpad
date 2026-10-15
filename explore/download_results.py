@@ -14,6 +14,9 @@ def list_and_read_files(dataset_tag: str):
     """List files in volume and return their contents."""
     from pathlib import Path
 
+    # Reload volume to see latest optimization/inference data
+    data_volume.reload()
+
     remote_path = Path("/data/output") / dataset_tag
 
     if not remote_path.exists():
