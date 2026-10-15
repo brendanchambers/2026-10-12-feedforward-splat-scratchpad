@@ -50,8 +50,7 @@ image = (
         index_url="https://docs.gsplat.studio/whl/pt24cu124",
     )
     .run_commands(
-        "git clone https://github.com/Tencent-Hunyuan/HunyuanWorld-Mirror /root/HunyuanWorld-Mirror",
-        "cd /root/HunyuanWorld-Mirror && git checkout main",
+        "git clone https://github.com/brendanchambers/2026-10-12-feedforward-splat-scratchpad.git /root/repo",
     )
 )
 
@@ -72,7 +71,7 @@ def run_inference(dataset_tag: str = "tomato-bed-tiny"):
     from PIL import Image
 
     # Add WorldMirror repo to path
-    sys.path.insert(0, "/root/HunyuanWorld-Mirror")
+    sys.path.insert(0, "/root/repo/repos/HunyuanWorld-Mirror")
 
     from src.models.models.worldmirror import WorldMirror
     from src.utils.inference_utils import prepare_images_to_tensor
@@ -106,6 +105,13 @@ def run_inference(dataset_tag: str = "tomato-bed-tiny"):
     # Prepare input
     views = {"img": imgs}
     cond_flags = [0, 0, 0]  # No conditioning [pose, depth, intrinsics]
+
+    # TODO
+    # add a debug flag
+    # if --debug, visually verify the round trip image preprocessing.
+    # for a random input image, show the original image, print its size in pixels
+    # for the corresponding tensor held in imgs, visualize the tensor as a regular image, and print its size.
+    # make it possible to compare the image before and after preprocessing, perhaps side by side.
 
     # Run inference
     print("Running inference...")
