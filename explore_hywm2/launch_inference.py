@@ -14,6 +14,29 @@ import modal
 # Modal app configuration
 app = modal.App("feedforward-3dgs-hy-wm-2.0")
 
+
+def download_models():
+    """Download HY-World-2.0 model during image build to avoid runtime downloads."""
+    import sys
+    from pathlib import Path
+
+    # Add frozen repo to Python path
+    repo_path = Path("/root/repo/repos/HY-World-2.0")
+    sys.path.insert(0, str(repo_path))
+
+    print("[Build] Downloading HY-World-2.0 model from HuggingFace...")
+    from hyworld2.worldrecon.pipeline import WorldMirrorPipeline
+
+    # Download model to HuggingFace cache directory
+    WorldMirrorPipeline.from_pretrained(
+        "tencent/HY-World-2.0",
+        subfolder="HY-WorldMirror-2.0",
+        enable_bf16=True,
+        disable_heads=["depth", "normal", "points"],
+    )
+    print("[Build] Model download complete!")
+
+
 # Create Modal image with all dependencies
 image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -64,6 +87,7 @@ image = (
     .run_commands(
         "git clone https://github.com/brendanchambers/2026-10-12-feedforward-splat-scratchpad.git /root/repo",
     )
+    .run_function(download_models)
 )
 
 # Mount local data directory
@@ -122,7 +146,7 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
         "tencent/HY-World-2.0",
         subfolder="HY-WorldMirror-2.0",  # Note: Correct subfolder name
         enable_bf16=True,
-        disable_heads=["camera", "depth"],
+        disable_heads=["depth", "normal", "points"],  # camera is required for gs
     )
     print("[Init] Pipeline loaded successfully")
 
