@@ -9,9 +9,15 @@ wheels/
 # Virtual environments
 .venv
 
-# 
-data
+# Data files
+data/
 **/*.ply
+
+# Large media files (anywhere in project)
 **/*.jpg
 **/*.png
 **/*.mp4
+**/*.gif
+
+# Git backups
+**/backup_git_info/
