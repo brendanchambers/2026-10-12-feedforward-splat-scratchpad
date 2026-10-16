@@ -4,6 +4,11 @@ uv init
 mkdir repos
 cd repos
 
+git clone https://github.com/Tencent-Hunyuan/HY-World-2.0.git
+cd HY-World-2.0.git
+mv .git backup_git_info
+cd ..
+
 git clone https://github.com/Tencent-Hunyuan/HunyuanWorld-Mirror
 cd HunyuanWorld-Mirror
 mv .git backup_git_info
