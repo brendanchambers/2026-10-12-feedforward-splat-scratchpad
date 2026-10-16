@@ -97,7 +97,6 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
 
 def log_gpu_stats(label: str):
     """Log GPU utilization stats using pynvml."""
-    import subprocess
     try:
         import pynvml
         pynvml.nvmlInit()
@@ -124,11 +123,6 @@ def log_gpu_stats(label: str):
 
         pynvml.nvmlShutdown()
         print(f"{'='*80}\n")
-
-        # Also run nvidia-smi for full details
-        print(f"[nvidia-smi] {label}")
-        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
-        print(result.stdout)
 
     except Exception as e:
         print(f"[GPU Stats] Failed to get GPU stats: {e}")

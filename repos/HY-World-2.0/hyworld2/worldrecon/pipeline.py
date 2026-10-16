@@ -59,6 +59,44 @@ from .hyworldmirror.utils.render_utils import render_interpolated_video
 
 
 # ============================================================
+# GPU monitoring helper
+# ============================================================
+
+def _log_gpu_stats(label: str, device):
+    """Log GPU utilization stats using pynvml."""
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+
+        if device.type != "cuda":
+            return
+
+        device_idx = device.index if device.index is not None else 0
+        handle = pynvml.nvmlDeviceGetHandleByIndex(device_idx)
+        name = pynvml.nvmlDeviceGetName(handle)
+        memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+
+        mem_used_gb = memory_info.used / 1024**3
+        mem_total_gb = memory_info.total / 1024**3
+        mem_pct = (memory_info.used / memory_info.total) * 100
+
+        print(f"\n{'='*80}")
+        print(f"[GPU Stats] {label}")
+        print(f"{'='*80}")
+        print(f"GPU {device_idx}: {name}")
+        print(f"  Memory: {mem_used_gb:.2f} GB / {mem_total_gb:.2f} GB ({mem_pct:.1f}%)")
+        print(f"  GPU Utilization: {util.gpu}%")
+        print(f"  Memory Utilization: {util.memory}%")
+        print(f"{'='*80}\n")
+
+        pynvml.nvmlShutdown()
+
+    except Exception as e:
+        print(f"[GPU Stats] Failed to get GPU stats: {e}")
+
+
+# ============================================================
 # Model loading helpers (checkpoint, config, selective load)
 # ============================================================
 
@@ -380,6 +418,7 @@ class WorldMirrorPipeline:
             if torch.cuda.is_available():
                 alloc = torch.cuda.memory_allocated(device) / (1024**3)
                 print(f"[Memory] allocated={alloc:.2f}GB")
+                _log_gpu_stats("After model initialization", device)
 
         return cls(model, device, sp_size, sp_group, rank)
 
@@ -602,6 +641,7 @@ class WorldMirrorPipeline:
 
         if self.rank == 0:
             print(f"[Inference] {S} images, shape={imgs.shape}, sp_size={self.sp_size}")
+            _log_gpu_stats("Before model forward pass", device)
 
         pp_xform = compute_preprocessing_transform(img_paths, target_size)
         cond_flags = [0, 0, 0]
@@ -640,6 +680,7 @@ class WorldMirrorPipeline:
 
         if self.rank == 0:
             print(f"[Inference] Done in {infer_time:.2f}s")
+            _log_gpu_stats("After model forward pass (peak utilization)", device)
         return predictions, imgs, infer_time
 
 
