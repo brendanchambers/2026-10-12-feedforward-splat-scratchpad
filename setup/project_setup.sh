@@ -2,32 +2,32 @@
 uv init
 
 mkdir repos
-cd repos
+pushd repos
 
 git clone https://github.com/Tencent-Hunyuan/HY-World-2.0.git
-cd HY-World-2.0.git
+pushd HY-World-2.0
 mv .git backup_git_info
-cd ..
+popd
 
 git clone https://github.com/Tencent-Hunyuan/HunyuanWorld-Mirror
-cd HunyuanWorld-Mirror
+pushd HunyuanWorld-Mirror
 mv .git backup_git_info
-cd ..
+popd
 
 git clone https://github.com/InternRobotics/AnySplat
-cd AnySplat
+pushd AnySplat
 mv .git backup_git_info
-cd ..
+popd
 
 git clone https://github.com/facebookresearch/vggt-omega
-cd vggt-omega
+pushd vggt-omega
 mv .git backup_git_info
-cd ..
+popd
 
 git clone https://github.com/facebookresearch/vggt
-cd vggt
+pushd vggt
 mv .git backup_git_info
-cd ..
+popd
 
 https://github.com/facebookresearch/vggt
 
