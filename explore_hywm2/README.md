@@ -19,7 +19,8 @@ Run the complete workflow (upload → inference → optimize → download) with 
 ```bash
 uv run --with modal modal run explore_hywm2/pipeline.py \
     --dataset-tag tomato-small-2 \
-    --model-tag hy-wm-2.0
+    --model-tag hy-wm-2.0 \
+    --delete-data
 ```
 
 ## GPU Configuration

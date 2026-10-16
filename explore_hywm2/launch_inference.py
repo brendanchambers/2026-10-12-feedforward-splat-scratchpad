@@ -75,6 +75,7 @@ image = (
         "packaging",
         "requests",
         "onnxruntime",
+        "pynvml",  # For GPU monitoring
     )
     .pip_install(
         "flash-attn",
@@ -94,6 +95,45 @@ image = (
 data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=True)
 
 
+def log_gpu_stats(label: str):
+    """Log GPU utilization stats using pynvml."""
+    import subprocess
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        device_count = pynvml.nvmlDeviceGetCount()
+
+        print(f"\n{'='*80}")
+        print(f"[GPU Stats] {label}")
+        print(f"{'='*80}")
+
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            name = pynvml.nvmlDeviceGetName(handle)
+            memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+
+            mem_used_gb = memory_info.used / 1024**3
+            mem_total_gb = memory_info.total / 1024**3
+            mem_pct = (memory_info.used / memory_info.total) * 100
+
+            print(f"GPU {i}: {name}")
+            print(f"  Memory: {mem_used_gb:.2f} GB / {mem_total_gb:.2f} GB ({mem_pct:.1f}%)")
+            print(f"  GPU Utilization: {util.gpu}%")
+            print(f"  Memory Utilization: {util.memory}%")
+
+        pynvml.nvmlShutdown()
+        print(f"{'='*80}\n")
+
+        # Also run nvidia-smi for full details
+        print(f"[nvidia-smi] {label}")
+        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
+        print(result.stdout)
+
+    except Exception as e:
+        print(f"[GPU Stats] Failed to get GPU stats: {e}")
+
+
 @app.function(
     image=image,
     gpu="A10G",
@@ -110,6 +150,7 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
     data_volume.reload()
 
     print(f"Starting HY-World-2.0 (WorldMirror 2.0) inference for dataset '{dataset_tag}'")
+    log_gpu_stats("Initial (before loading model)")
 
     # Setup paths
     input_path = Path("/data/incoming") / dataset_tag
@@ -149,9 +190,11 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
         disable_heads=["depth", "normal", "points"],  # camera is required for gs
     )
     print("[Init] Pipeline loaded successfully")
+    log_gpu_stats("After loading model")
 
     # Run inference with parameters matching the pipeline API
     print(f"[Inference] Processing images from {images_output}")
+    log_gpu_stats("Before inference")
     result = pipeline(
         str(images_output),
         output_path=str(output_path),  # Use exact output path directly
@@ -165,6 +208,7 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
     )
 
     print("[Inference] Inference complete!")
+    log_gpu_stats("After inference (maximum utilization)")
     if result:
         print(f"[Save] Output directory: {result}")
     else:
