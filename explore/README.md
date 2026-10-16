@@ -140,3 +140,57 @@ Use any web-based Gaussian Splat viewer:
 - [antimatter15's viewer](https://antimatter15.com/splat/)
 
 Compare the original (`gaussians.ply`) vs optimized (`optimized/saves/*.ply`) results.
+
+## After Refactor
+
+The pipeline now supports multiple model versions via the `--model-tag` parameter. This allows you to easily switch between different inference models.
+
+### Supported Models
+
+- `hy-wm-1.1` - HunyuanWorld-Mirror 1.1 (uses `inference_hy-wm-1p1.py`)
+- `hy-wm-2.0` - HunyuanWorld-Mirror 2.0 (uses `hy_wm_2_0_inference.py`)
+
+### Usage with Model Tags
+
+**Run complete pipeline with specific model:**
+```bash
+uv run --with modal modal run explore/pipeline.py \
+  --dataset-tag tomato-small-2 \
+  --model-tag hy-wm-1.1
+```
+
+**Skip upload/download for faster iteration:**
+```bash
+uv run --with modal modal run explore/pipeline.py \
+  --dataset-tag tomato-small-2 \
+  --model-tag hy-wm-1.1 \
+  --skip-upload \
+  --skip-download
+```
+
+**Test with verbose output:**
+```bash
+uv run --with modal modal run explore/pipeline.py \
+  --dataset-tag tomato-small-2 \
+  --model-tag hy-wm-1.1 \
+  --verbose
+```
+
+### Output Structure
+
+Results are now organized by model version:
+```
+data/output/
+├── hy-wm-1.1/
+│   └── tomato-small-2/
+│       ├── images/
+│       ├── sparse/
+│       └── gaussians.ply
+└── hy-wm-2.0/
+    └── tomato-small-2/
+        ├── images/
+        ├── sparse/
+        └── gaussians.ply
+```
+
+This allows easy comparison between different model versions on the same dataset.

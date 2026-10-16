@@ -1,8 +1,8 @@
 """
-Simple feedforward 3D Gaussian Splatting inference using WorldMirror.
+Feedforward 3D Gaussian Splatting inference using HunyuanWorld-Mirror 1.1.
 
 This script runs on Modal cloud GPUs to generate .ply Gaussian Splat files
-from input images. It's designed as the simplest possible example.
+from input images using the HunyuanWorld-Mirror 1.1 model.
 """
 
 import sys
@@ -72,7 +72,7 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
     timeout=3600,  # 1 hour timeout
     volumes={"/data": data_volume},
 )
-def run_inference(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, save_colmap: bool = True):
+def run_inference(dataset_tag: str = "tomato-bed-tiny", model_tag: str = "hy-wm-1.1", verbose: bool = False, save_colmap: bool = True):
     """Run WorldMirror inference on input images with optional COLMAP output."""
     import subprocess
     import shutil
@@ -80,11 +80,11 @@ def run_inference(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, s
     # Reload volume to see latest uploaded data
     data_volume.reload()
 
-    print(f"Starting inference for dataset '{dataset_tag}'")
+    print(f"Starting inference for dataset '{dataset_tag}' with model '{model_tag}'")
 
     # Setup paths
     input_path = Path("/data/incoming") / dataset_tag
-    output_path = Path("/data/output") / dataset_tag
+    output_path = Path("/data/output") / model_tag / dataset_tag
 
     if not input_path.exists():
         raise ValueError(f"Input directory does not exist: {input_path}")
@@ -116,8 +116,8 @@ def run_inference(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, s
     if save_colmap:
         cmd.append("--save_colmap")
 
-    if not verbose:
-        cmd.append("--no-save_rendered")  # Skip video rendering for speed
+    if verbose:
+        cmd.append("--save_rendered")  # Enable video rendering in verbose mode
 
     print(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -137,8 +137,8 @@ def run_inference(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, s
 
 
 @app.local_entrypoint()
-def main(dataset_tag: str = "tomato-bed-tiny", verbose: bool = False, save_colmap: bool = True):
+def main(dataset_tag: str = "tomato-bed-tiny", model_tag: str = "hy-wm-1.1", verbose: bool = False, save_colmap: bool = True):
     """Local entrypoint to run inference on Modal."""
-    print(f"Launching Modal inference for dataset '{dataset_tag}'{' (verbose mode)' if verbose else ''}")
-    run_inference.remote(dataset_tag=dataset_tag, verbose=verbose, save_colmap=save_colmap)
-    print(f"Results will be in Modal volume at /data/output/{dataset_tag}")
+    print(f"Launching Modal inference for dataset '{dataset_tag}' with model '{model_tag}'{' (verbose mode)' if verbose else ''}")
+    run_inference.remote(dataset_tag=dataset_tag, model_tag=model_tag, verbose=verbose, save_colmap=save_colmap)
+    print(f"Results will be in Modal volume at /data/output/{model_tag}/{dataset_tag}")

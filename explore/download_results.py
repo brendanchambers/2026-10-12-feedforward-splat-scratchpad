@@ -10,14 +10,14 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
 
 
 @app.function(volumes={"/data": data_volume})
-def list_and_read_files(dataset_tag: str):
+def list_and_read_files(dataset_tag: str, model_tag: str = "hy-wm-1.1"):
     """List files in volume and return their contents."""
     from pathlib import Path
 
     # Reload volume to see latest optimization/inference data
     data_volume.reload()
 
-    remote_path = Path("/data/output") / dataset_tag
+    remote_path = Path("/data/output") / model_tag / dataset_tag
 
     if not remote_path.exists():
         raise ValueError(f"Remote directory does not exist: {remote_path}")
@@ -34,15 +34,15 @@ def list_and_read_files(dataset_tag: str):
 
 
 @app.local_entrypoint()
-def main(dataset_tag: str = "tomato-bed-tiny"):
+def main(dataset_tag: str = "tomato-bed-tiny", model_tag: str = "hy-wm-1.1"):
     """Download results from Modal volume."""
     from pathlib import Path
 
-    local_dir = f"data/output/{dataset_tag}"
-    print(f"📦 Downloading dataset '{dataset_tag}' to {local_dir}...")
+    local_dir = f"data/output/{model_tag}/{dataset_tag}"
+    print(f"📦 Downloading dataset '{dataset_tag}' (model: {model_tag}) to {local_dir}...")
 
     # Get files from Modal
-    files_data = list_and_read_files.remote(dataset_tag)
+    files_data = list_and_read_files.remote(dataset_tag, model_tag)
 
     # Write locally
     local_path = Path(local_dir)

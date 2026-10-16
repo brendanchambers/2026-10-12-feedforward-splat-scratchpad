@@ -13,7 +13,7 @@
 ## Project Structure
 - `data/` - top-level directory for data
 - `models/` - top-level directory for models
-- `notes/` - **never modify** (read-only)
+- `planning/` - Write planning documents here for archival. You may not edit old entries.
 
 ## Compute Environment
 - Local: M4 Apple Air

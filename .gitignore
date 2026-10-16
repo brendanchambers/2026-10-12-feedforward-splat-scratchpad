@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Local models, if any
+models/
+
 # Data files
 data/
 **/*.ply
