@@ -17,7 +17,7 @@ Run the complete workflow (upload → inference → optimize → download) with 
 
 **Recommended usage** (fresh run with optimization):
 ```bash
-uv run --with modal modal run explore/pipeline.py \
+uv run --with modal modal run explore_hywm2/pipeline.py \
     --dataset-tag tomato-small-2 \
     --model-tag hy-wm-2.0
 ```
@@ -41,7 +41,7 @@ For a fresh run with clean data, use the `--delete-data` flag or the standalone 
 uv run --with modal modal run explore/pipeline.py --dataset-tag my-images --delete-data
 
 # Or use standalone delete script
-uv run --with modal modal run explore/delete_data.py --dataset-tag my-images
+uv run --with modal modal run quick-comparison/delete_data.py --dataset-tag my-images
 ```
 
 This removes both incoming and output data for the specified dataset tag from the Modal volume.

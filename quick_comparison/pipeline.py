@@ -91,7 +91,7 @@ def main(
         print("\n📤 Step 1/3: Uploading data...")
         upload_cmd = [
             "uv", "run", "--with", "modal", "modal", "run",
-            "explore/upload_data.py",
+            "quick_comparison/upload_data.py",
             "--dataset-tag", dataset_tag
         ]
         if images_dir:
@@ -109,7 +109,7 @@ def main(
     print(f"\n🧠 Step 2/3: Running inference with {model_tag}...")
     inference_cmd = [
         "uv", "run", "--with", "modal", "modal", "run",
-        f"explore/{inference_script}",
+        f"quick_comparison/{inference_script}",
         "--dataset-tag", dataset_tag,
         "--model-tag", model_tag
     ]
@@ -126,7 +126,7 @@ def main(
     #     print(f"\n🔧 Step 3/4: Running post-3DGS optimization ({optimize_steps} steps)...")
     #     optimize_cmd = [
     #         "uv", "run", "--with", "modal", "modal", "run",
-    #         "explore/optimize_3dgs.py",
+    #         "quick_comparison/optimize_3dgs.py",
     #         "--dataset-tag", dataset_tag,
     #         "--max-steps", str(optimize_steps)
     #     ]
@@ -143,7 +143,7 @@ def main(
         print("\n📥 Step 4/4: Downloading results...")
         download_cmd = [
             "uv", "run", "--with", "modal", "modal", "run",
-            "explore/download_results.py",
+            "quick_comparison/download_results.py",
             "--dataset-tag", dataset_tag,
             "--model-tag", model_tag
         ]

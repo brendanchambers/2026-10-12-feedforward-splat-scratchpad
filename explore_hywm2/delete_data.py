@@ -17,8 +17,9 @@ def delete_dataset_data(dataset_tag: str):
     from pathlib import Path
 
     paths_to_delete = [
-        Path("/data/incoming") / dataset_tag,
-        Path("/data/output") / dataset_tag,
+        # Path("/data/incoming") / dataset_tag,
+        Path("/data") / dataset_tag,
+        Path("/data/output")
     ]
 
     deleted = []

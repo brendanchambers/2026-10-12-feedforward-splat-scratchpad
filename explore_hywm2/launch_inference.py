@@ -121,6 +121,8 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
     pipeline = WorldMirrorPipeline.from_pretrained(
         "tencent/HY-World-2.0",
         subfolder="HY-WorldMirror-2.0",  # Note: Correct subfolder name
+        enable_bf16=True,
+        disable_heads=["camera", "depth"],
     )
     print("[Init] Pipeline loaded successfully")
 
@@ -130,10 +132,10 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
         str(images_output),
         output_path=str(output_path),  # Use exact output path directly
         save_gs=True,
-        save_points=True,
-        save_camera=True,
-        save_depth=True,
-        save_normal=True,
+        save_points=False,
+        save_camera=False,
+        save_depth=False,
+        save_normal=False,
         save_colmap=False,  # Skip COLMAP (not needed)
         log_time=True,
     )

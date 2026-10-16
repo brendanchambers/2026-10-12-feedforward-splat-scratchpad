@@ -45,8 +45,6 @@ def main(
     images_dir: str | None = None,
     skip_upload: bool = False,
     skip_download: bool = False,
-    skip_optimize: bool = False,
-    optimize_steps: int = 3000,
     verbose: bool = False,
     delete_data: bool = False,
 ):
@@ -90,7 +88,7 @@ def main(
         print("\n📤 Step 1/3: Uploading data...")
         upload_cmd = [
             "uv", "run", "--with", "modal", "modal", "run",
-            "explore/upload_data.py",
+            "explore_hywm2/upload_data.py",
             "--dataset-tag", dataset_tag
         ]
         if images_dir:
@@ -104,11 +102,12 @@ def main(
     else:
         print("\n⏭️  Skipping upload step")
 
+
     # Step 2: Run inference
     print(f"\n🧠 Step 2/3: Running inference with {model_tag}...")
     inference_cmd = [
         "uv", "run", "--with", "modal", "modal", "run",
-        f"explore/{inference_script}",
+        f"explore_hywm2/{inference_script}",
         "--dataset-tag", dataset_tag,
         "--model-tag", model_tag
     ]
@@ -120,29 +119,13 @@ def main(
         sys.exit(1)
     print("✅ Inference complete")
 
-    # Step 3: Run post-3DGS optimization (optional)
-    # if not skip_optimize:
-    #     print(f"\n🔧 Step 3/4: Running post-3DGS optimization ({optimize_steps} steps)...")
-    #     optimize_cmd = [
-    #         "uv", "run", "--with", "modal", "modal", "run",
-    #         "explore/optimize_3dgs.py",
-    #         "--dataset-tag", dataset_tag,
-    #         "--max-steps", str(optimize_steps)
-    #     ]
-    #     result = subprocess.run(optimize_cmd)
-    #     if result.returncode != 0:
-    #         print("❌ Optimization failed")
-    #         sys.exit(1)
-    #     print("✅ Optimization complete")
-    # else:
-    #     print("\n⏭️  Skipping optimization step")
 
     # Step 4: Download results
     if not skip_download:
         print("\n📥 Step 4/4: Downloading results...")
         download_cmd = [
             "uv", "run", "--with", "modal", "modal", "run",
-            "explore/download_results.py",
+            "explore_hywm2/download_results.py",
             "--dataset-tag", dataset_tag,
             "--model-tag", model_tag
         ]
@@ -152,9 +135,7 @@ def main(
             sys.exit(1)
         print("✅ Download complete")
         print(f"\n🎉 Pipeline complete! Results saved to data/output/{model_tag}/{dataset_tag}/")
-        if not skip_optimize:
-            print(f"   - Original 3DGS: data/output/{model_tag}/{dataset_tag}/gaussians.ply")
-            print(f"   - Optimized 3DGS: data/output/{model_tag}/{dataset_tag}/optimized/")
+
     else:
         print("\n⏭️  Skipping download step")
         print(f"\n🎉 Pipeline complete!")
