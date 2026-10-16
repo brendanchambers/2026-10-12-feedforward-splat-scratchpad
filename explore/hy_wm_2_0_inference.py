@@ -97,7 +97,7 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Copy images to output/images directory (pipeline expects them there)
-    images_output = output_path / "images"
+    images_output = output_path
     images_output.mkdir(exist_ok=True)
 
     print(f"Copying images from {input_path} to {images_output}")
