@@ -59,7 +59,6 @@ This prevents stale data issues when running sequential jobs.
 
 Use any web-based Gaussian Splat viewer:
 - [SuperSplat](https://playcanvas.com/supersplat)
-- [antimatter15's viewer](https://antimatter15.com/splat/)
 
 Compare the original (`gaussians.ply`) vs optimized (`optimized/saves/*.ply`) results.
 
