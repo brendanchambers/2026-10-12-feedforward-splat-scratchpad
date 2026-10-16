@@ -69,10 +69,9 @@ def main(
         print("✅ Data deletion complete")
 
     # Map model tag to inference script
-    # Convert model tag (e.g., hy-wm-1.1) to script name (e.g., inference_hy-wm-1p1.py)
-    # Replace dots with 'p' and convert to underscore format for some versions
     model_to_script = {
-        "hy-wm-2.0": "launch_inference_fsdp.py",
+        # "hy-wm-2.0": "launch_fsdp.py",  # works but all-gather needs to be optimized
+        "hy-wm-2.0": "launch_simple.py",  # 
     }
 
     inference_script = model_to_script.get(model_tag)
