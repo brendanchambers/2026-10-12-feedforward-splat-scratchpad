@@ -23,6 +23,11 @@ uv run --with modal modal run explore_hywm2/pipeline.py \
     --delete-data
 ```
 
+# fsdp added as default 
+```bash
+uv run --with modal modal run explore_hywm2/launch_inference.py --dataset-tag tomato-32 --model-tag hy-wm-2.0
+```
+
 ## GPU Configuration
 
 The script uses an A10G GPU (24GB VRAM required for 16 images). For smaller datasets (fewer images), you can use a T4 GPU by editing `simple_feedforward_3dgs.py`:

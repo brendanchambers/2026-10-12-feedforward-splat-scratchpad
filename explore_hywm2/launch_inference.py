@@ -18,6 +18,7 @@ app = modal.App("feedforward-3dgs-hy-wm-2.0")
 def download_models():
     """Download HY-World-2.0 model during image build to avoid runtime downloads."""
     import sys
+    import os
     from pathlib import Path
 
     # Add frozen repo to Python path
@@ -26,6 +27,11 @@ def download_models():
 
     print("[Build] Downloading HY-World-2.0 model from HuggingFace...")
     from hyworld2.worldrecon.pipeline import WorldMirrorPipeline
+
+    # Simulate single-GPU environment for download (FSDP not needed)
+    os.environ.pop("WORLD_SIZE", None)
+    os.environ.pop("RANK", None)
+    os.environ.pop("LOCAL_RANK", None)
 
     # Download model to HuggingFace cache directory
     WorldMirrorPipeline.from_pretrained(
@@ -130,12 +136,12 @@ def log_gpu_stats(label: str):
 
 @app.function(
     image=image,
-    gpu="A10G",
+    gpu="A10G:2",  # Request 2x A10G GPUs for FSDP
     timeout=3600,
     volumes={"/data": data_volume},
 )
 def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2.0"):
-    """Run WorldMirror 2.0 inference on input images."""
+    """Run WorldMirror 2.0 inference on input images using 2x A10G GPUs with FSDP."""
     import os
     import shutil
     import sys
@@ -144,6 +150,7 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
     data_volume.reload()
 
     print(f"Starting HY-World-2.0 (WorldMirror 2.0) inference for dataset '{dataset_tag}'")
+    print(f"Multi-GPU mode: 2x A10G with FSDP enabled")
     log_gpu_stats("Initial (before loading model)")
 
     # Setup paths
@@ -172,14 +179,35 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
     sys.path.insert(0, str(repo_path))
     print(f"Using frozen HY-World-2.0 repo at {repo_path}")
 
+    # Manually initialize distributed environment for FSDP
+    # Modal allocates multiple GPUs but doesn't set distributed env vars automatically
+    import torch
+    gpu_count = torch.cuda.device_count()
+    print(f"[GPU Detection] Found {gpu_count} GPUs")
+
+    if gpu_count > 1:
+        # Set up environment variables for PyTorch distributed
+        os.environ['WORLD_SIZE'] = str(gpu_count)
+        os.environ['RANK'] = '0'
+        os.environ['LOCAL_RANK'] = '0'
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '29500'
+        print(f"[Distributed] Initialized environment for {gpu_count} GPUs")
+        print(f"[Distributed] WORLD_SIZE={os.environ['WORLD_SIZE']}, "
+              f"RANK={os.environ['RANK']}, "
+              f"LOCAL_RANK={os.environ['LOCAL_RANK']}")
+    else:
+        print(f"[Distributed] Single GPU mode (WORLD_SIZE=1)")
+
     # Import pipeline from frozen repo
     from hyworld2.worldrecon.pipeline import WorldMirrorPipeline
 
-    # Load the pipeline (will download model from HuggingFace)
-    print("[Init] Loading WorldMirror 2.0 pipeline from tencent/HY-World-2.0...")
+    # Load the pipeline with FSDP enabled
+    print("[Init] Loading WorldMirror 2.0 pipeline from tencent/HY-World-2.0 with FSDP...")
     pipeline = WorldMirrorPipeline.from_pretrained(
         "tencent/HY-World-2.0",
-        subfolder="HY-WorldMirror-2.0",  # Note: Correct subfolder name
+        subfolder="HY-WorldMirror-2.0",
+        use_fsdp=True,  # Enable FSDP for multi-GPU
         enable_bf16=True,
         disable_heads=["depth", "normal", "points"],  # camera is required for gs
     )
