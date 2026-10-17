@@ -11,19 +11,15 @@ uv run --with modal modal setup
 
 ## Usage
 
-  Direct inference launch:
-  # Single GPU mode (default)
-  uv run --with modal modal run explore_hywm2/launch_inference.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode 1gpu
-
-  # FSDP mode
-  uv run --with modal modal run explore_hywm2/launch_inference.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode fsdp
-
-  Via pipeline:
+ 
+convenience outer pipeline:
   # Single GPU mode (default)
   uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-32 --model-tag hy-wm-2.0
 
   # FSDP mode
   uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode fsdp
+
+
   
 
 ## GPU Configuration
