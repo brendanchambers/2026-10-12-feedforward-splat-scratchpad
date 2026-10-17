@@ -11,22 +11,20 @@ uv run --with modal modal setup
 
 ## Usage
 
-### Quick Start: Full Pipeline
+  Direct inference launch:
+  # Single GPU mode (default)
+  uv run --with modal modal run explore_hywm2/launch_inference.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode 1gpu
 
-Run the complete workflow (upload → inference → optimize → download) with a single command.
+  # FSDP mode
+  uv run --with modal modal run explore_hywm2/launch_inference.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode fsdp
 
-**Recommended usage** (fresh run with optimization):
-```bash
-uv run --with modal modal run explore_hywm2/pipeline.py \
-    --dataset-tag tomato-small-2 \
-    --model-tag hy-wm-2.0 \
-    --delete-data
-```
+  Via pipeline:
+  # Single GPU mode (default)
+  uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-32 --model-tag hy-wm-2.0
 
-# fsdp added as default 
-```bash
-uv run --with modal modal run explore_hywm2/launch_inference.py --dataset-tag tomato-32 --model-tag hy-wm-2.0
-```
+  # FSDP mode
+  uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode fsdp
+  
 
 ## GPU Configuration
 

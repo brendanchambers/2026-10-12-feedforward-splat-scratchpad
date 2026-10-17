@@ -1,9 +1,7 @@
 """
-Feedforward 3D Gaussian Splatting inference using HunyuanWorld-Mirror 2.0.
+Simplified feedforward 3D Gaussian Splatting inference using HunyuanWorld-Mirror 2.0.
 
-This script runs on Modal cloud GPUs to generate .ply Gaussian Splat files
-from input images using the HunyuanWorld-Mirror 2.0 model from the frozen
-HY-World-2.0 repository.
+Single A100 80GB GPU, no FSDP, no torchrun - just straightforward inference.
 """
 
 import sys
@@ -12,12 +10,13 @@ from pathlib import Path
 import modal
 
 # Modal app configuration
-app = modal.App("feedforward-3dgs-hy-wm-2.0")
+app = modal.App("feedforward-3dgs-hy-wm-2.0-simple")
 
 
 def download_models():
     """Download HY-World-2.0 model during image build to avoid runtime downloads."""
     import sys
+    import os
     from pathlib import Path
 
     # Add frozen repo to Python path
@@ -75,7 +74,7 @@ image = (
         "packaging",
         "requests",
         "onnxruntime",
-        "pynvml",  # For GPU monitoring
+        "pynvml",
     )
     .pip_install(
         "flash-attn",
@@ -95,56 +94,25 @@ image = (
 data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=True)
 
 
-def log_gpu_stats(label: str):
-    """Log GPU utilization stats using pynvml."""
-    try:
-        import pynvml
-        pynvml.nvmlInit()
-        device_count = pynvml.nvmlDeviceGetCount()
-
-        print(f"\n{'='*80}")
-        print(f"[GPU Stats] {label}")
-        print(f"{'='*80}")
-
-        for i in range(device_count):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            name = pynvml.nvmlDeviceGetName(handle)
-            memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-
-            mem_used_gb = memory_info.used / 1024**3
-            mem_total_gb = memory_info.total / 1024**3
-            mem_pct = (memory_info.used / memory_info.total) * 100
-
-            print(f"GPU {i}: {name}")
-            print(f"  Memory: {mem_used_gb:.2f} GB / {mem_total_gb:.2f} GB ({mem_pct:.1f}%)")
-            print(f"  GPU Utilization: {util.gpu}%")
-            print(f"  Memory Utilization: {util.memory}%")
-
-        pynvml.nvmlShutdown()
-        print(f"{'='*80}\n")
-
-    except Exception as e:
-        print(f"[GPU Stats] Failed to get GPU stats: {e}")
-
-
 @app.function(
     image=image,
-    gpu="A10G",
+    gpu="A100-80GB",  # Single A100 80GB GPU
     timeout=3600,
     volumes={"/data": data_volume},
 )
 def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2.0"):
-    """Run WorldMirror 2.0 inference on input images."""
+    """Run WorldMirror 2.0 inference on a single GPU without FSDP."""
     import os
     import shutil
+    import subprocess
     import sys
+    import torch
 
     # Reload volume to see latest uploaded data
     data_volume.reload()
 
     print(f"Starting HY-World-2.0 (WorldMirror 2.0) inference for dataset '{dataset_tag}'")
-    log_gpu_stats("Initial (before loading model)")
+    print(f"Single GPU mode: A100 80GB, no FSDP")
 
     # Setup paths
     input_path = Path("/data/incoming") / dataset_tag
@@ -155,7 +123,7 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
 
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Copy images to output/images directory (pipeline expects them there)
+    # Copy images to output directory
     images_output = output_path
     images_output.mkdir(exist_ok=True)
 
@@ -164,49 +132,47 @@ def run_inference(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2
         if img_file.suffix.lower() in ['.jpg', '.png', '.jpeg']:
             shutil.copy2(img_file, images_output / img_file.name)
 
+    # Check GPU
+    gpu_count = torch.cuda.device_count()
+    print(f"[GPU Detection] Found {gpu_count} GPU(s)")
+
     # Add frozen repo to Python path
     repo_path = Path("/root/repo/repos/HY-World-2.0")
     if not repo_path.exists():
-        raise RuntimeError(f"Frozen repo not found at {repo_path}. Check clone command in image build.")
+        raise RuntimeError(f"Frozen repo not found at {repo_path}")
 
-    sys.path.insert(0, str(repo_path))
     print(f"Using frozen HY-World-2.0 repo at {repo_path}")
 
-    # Import pipeline from frozen repo
-    from hyworld2.worldrecon.pipeline import WorldMirrorPipeline
+    # Run pipeline using python -m
+    print("[Pipeline] Running inference via python -m...")
+    cmd = [
+        "python", "-m", "hyworld2.worldrecon.pipeline",
+        "--input_path", str(images_output),
+        "--strict_output_path", str(output_path),
+        "--pretrained_model_name_or_path", "tencent/HY-World-2.0",
+        "--subfolder", "HY-WorldMirror-2.0",
+        "--enable_bf16",
+        "--no_save_depth",
+        "--no_save_normal",
+        "--no_save_points",
+        "--no_save_camera",
+        "--log_time",
+        "--no_interactive",
+    ]
 
-    # Load the pipeline (will download model from HuggingFace)
-    print("[Init] Loading WorldMirror 2.0 pipeline from tencent/HY-World-2.0...")
-    pipeline = WorldMirrorPipeline.from_pretrained(
-        "tencent/HY-World-2.0",
-        subfolder="HY-WorldMirror-2.0",  # Note: Correct subfolder name
-        enable_bf16=True,
-        disable_heads=["depth", "normal", "points"],  # camera is required for gs
-    )
-    print("[Init] Pipeline loaded successfully")
-    log_gpu_stats("After loading model")
+    # Set PYTHONPATH to include frozen repo
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(repo_path) + ":" + env.get("PYTHONPATH", "")
 
-    # Run inference with parameters matching the pipeline API
-    print(f"[Inference] Processing images from {images_output}")
-    log_gpu_stats("Before inference")
-    result = pipeline(
-        str(images_output),
-        output_path=str(output_path),  # Use exact output path directly
-        save_gs=True,
-        save_points=False,
-        save_camera=False,
-        save_depth=False,
-        save_normal=False,
-        save_colmap=False,  # Skip COLMAP (not needed)
-        log_time=True,
-    )
+    print(f"[Pipeline] Command: {' '.join(cmd)}")
+
+    # Run pipeline
+    result = subprocess.run(cmd, env=env, capture_output=False, text=True)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Pipeline failed with exit code {result.returncode}")
 
     print("[Inference] Inference complete!")
-    log_gpu_stats("After inference (maximum utilization)")
-    if result:
-        print(f"[Save] Output directory: {result}")
-    else:
-        print("[Warning] Inference returned None (possibly skipped)")
 
     # Commit results
     data_volume.commit()

@@ -41,12 +41,13 @@ def delete_dataset_data(dataset_tag: str, model_tag: str = "hy-wm-1.1"):
 @app.local_entrypoint()
 def main(
     dataset_tag: str,
-    model_tag: str = "hy-wm-1.1",
+    model_tag: str = "hy-wm-2.0",
     images_dir: str | None = None,
     skip_upload: bool = False,
     skip_download: bool = False,
     verbose: bool = False,
     delete_data: bool = False,
+    gpu_mode: str = "1gpu",
 ):
     """
     Run the full pipeline: upload data, run feedforard inference, post hoc classical optimize (optional), download results.
@@ -57,30 +58,24 @@ def main(
         images_dir: Custom path to images directory (optional)
         skip_upload: Skip the upload step (data already on Modal)
         skip_download: Skip the download step (just run inference)
-        skip_optimize: Skip the post-3DGS optimization step
-        optimize_steps: Number of optimization steps (default: 3000)
         verbose: Enable verbose output during inference
         delete_data: Delete existing dataset data from volume before starting
+        gpu_mode: GPU configuration mode - either "1gpu" or "fsdp"
     """
+    # Validate gpu_mode
+    if gpu_mode not in ["1gpu", "fsdp"]:
+        print(f"❌ Invalid gpu_mode: {gpu_mode}")
+        print(f"   Must be either '1gpu' or 'fsdp'")
+        sys.exit(1)
+
     # Step 0: Delete existing data if requested
     if delete_data:
         print(f"\n🗑️  Step 0: Deleting existing data for '{dataset_tag}' (model: {model_tag})...")
         delete_dataset_data.remote(dataset_tag, model_tag)
         print("✅ Data deletion complete")
 
-    # Map model tag to inference script
-    model_to_script = {
-        # "hy-wm-2.0": "launch_fsdp.py",  # works but all-gather needs to be optimized
-        "hy-wm-2.0": "launch_simple.py",  # 
-    }
-
-    inference_script = model_to_script.get(model_tag)
-    if not inference_script:
-        print(f"❌ Unknown model tag: {model_tag}")
-        print(f"   Available models: {', '.join(model_to_script.keys())}")
-        sys.exit(1)
-
     print(f"🚀 Starting pipeline for dataset: {dataset_tag} with model: {model_tag}")
+    print(f"   GPU Mode: {gpu_mode}")
 
     # Step 1: Upload data
     if not skip_upload:
@@ -106,9 +101,10 @@ def main(
     print(f"\n🧠 Step 2/3: Running inference with {model_tag}...")
     inference_cmd = [
         "uv", "run", "--with", "modal", "modal", "run",
-        f"explore_hywm2/{inference_script}",
+        "explore_hywm2/launch_inference.py",
         "--dataset-tag", dataset_tag,
-        "--model-tag", model_tag
+        "--model-tag", model_tag,
+        "--gpu-mode", gpu_mode,
     ]
     if verbose:
         inference_cmd.append("--verbose")

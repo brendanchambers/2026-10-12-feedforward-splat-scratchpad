@@ -101,7 +101,7 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
 
 @app.function(
     image=image,
-    gpu="A100:2",  # Request 2x A100 GPUs (40GB each) for FSDP
+    gpu="A100-80GB:2",  # Request 2x A100 GPUs (80GB each) for FSDP
     timeout=3600,
     volumes={"/data": data_volume},
 )
