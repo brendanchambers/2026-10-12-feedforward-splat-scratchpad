@@ -35,8 +35,7 @@ from safetensors.torch import load_file as load_safetensors
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     ShardingStrategy,
-    CPUOffload,
-    MixedPrecision
+    CPUOffload
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 
@@ -258,19 +257,11 @@ def _wrap_model_fsdp(model, sp_group, device, use_cpu_offload=False, enable_bf16
         auto_wrap_policy = functools.partial(
             transformer_auto_wrap_policy, transformer_layer_cls=wrap_cls)
 
-    # 1. Define the Mixed Precision Policy
-    # bfloat16 is highly recommended for Ampere+ GPUs to avoid overflow issues
-    mp_policy = MixedPrecision(
-        param_dtype=torch.bfloat16,
-        reduce_dtype=torch.bfloat16,  # Precision for gradient communication
-        buffer_dtype=torch.bfloat16   # Precision for internal buffers
-    )
-
     fsdp_model = FSDP(
         model, process_group=sp_group,
         sharding_strategy=ShardingStrategy.FULL_SHARD,
         auto_wrap_policy=auto_wrap_policy,
-        mixed_precision=mp_policy,
+        mixed_precision=None,  # setting this breaks the float32 upcasting needed for linalg.inv
         cpu_offload=CPUOffload(offload_params=True) if use_cpu_offload else None,
         device_id=device, use_orig_params=True, sync_module_states=True,
         forward_prefetch=False,

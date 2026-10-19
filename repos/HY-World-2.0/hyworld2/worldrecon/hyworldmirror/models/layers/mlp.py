@@ -59,8 +59,8 @@ class MlpFP32(Mlp):
         x = 0.5 * x * (1 + torch.erf(x * 2**-0.5))
         # NOTE: Original WorldMirror 2.0 code boosted precision to 32-bit here with x.float()
         # This causes dtype mismatch with FSDP + BF16, so overriding for now
-        # x = self.fc2(x.float())  # Original
-        x = self.fc2(x)
+        x = self.fc2(x.float())  # Original
+        #x = self.fc2(x)  # actually this breaks linalg.inv, which needs fp32
         return x
 
     def forward(self, x: Tensor) -> Tensor:

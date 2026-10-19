@@ -13,7 +13,7 @@ import modal
 app = modal.App("feedforward-3dgs-hy-wm-2.0")
 
 # Image version - update this to force Modal to rebuild the image
-IMAGE_VERSION = "2026-10-19-v2-fsdp-dtype-fix"
+IMAGE_VERSION = "2026-10-19-v3"
 
 
 def download_models():
