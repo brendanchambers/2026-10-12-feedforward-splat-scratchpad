@@ -91,6 +91,7 @@ image = (
     )
     .run_commands(
         "git clone https://github.com/brendanchambers/2026-10-12-feedforward-splat-scratchpad.git /root/repo",
+        "cd /root/repo && git pull origin main",  # Ensure we have latest changes
     )
     .run_function(download_models)
 )
@@ -101,11 +102,11 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
 
 @app.function(
     image=image,
-    gpu="A10G", 
+    gpu="A10G",
     timeout=3600,
     volumes={"/data": data_volume},
 )
-def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2.0"):
+def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2.0", frames_chunk_size: int = 1):
     """Run WorldMirror 2.0 inference on a single GPU without FSDP."""
     import os
     import shutil
@@ -161,6 +162,7 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
         "--no_save_normal",
         "--no_save_points",
         "--no_save_camera",
+        "--frames_chunk_size", str(frames_chunk_size),
         "--log_time",
         "--no_interactive",
     ]
@@ -172,7 +174,8 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
     # Enable CUDA memory debugging and OOM diagnostics
     # Note: expandable_segments not supported on all platforms (e.g., A10G), so only use max_split_size_mb
     env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
-    env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable our custom memory monitoring
+    env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable collective communication monitoring
+    env["ENABLE_HEAD_MEMORY_MONITOR"] = "1"  # Enable fine-grained head monitoring
 
     print(f"[Pipeline] Command: {' '.join(cmd)}")
 
@@ -191,11 +194,11 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
 
 @app.function(
     image=image,
-    gpu="A10G:2",  # 2x A100 80GB GPUs for FSDP
+    gpu="A10G:2",  # 2x A10G GPUs for FSDP
     timeout=3600,
     volumes={"/data": data_volume},
 )
-def run_inference_fsdp(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2.0"):
+def run_inference_fsdp(dataset_tag: str = "tomato-small-2", model_tag: str = "hy-wm-2.0", frames_chunk_size: int = 1):
     """Run WorldMirror 2.0 inference using torchrun for proper FSDP support."""
     import os
     import shutil
@@ -256,6 +259,7 @@ def run_inference_fsdp(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
         "--no_save_normal",
         "--no_save_points",
         "--no_save_camera",
+        "--frames_chunk_size", str(frames_chunk_size),
         "--log_time",
         "--no_interactive",
     ]
@@ -268,7 +272,8 @@ def run_inference_fsdp(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
     # Note: expandable_segments not supported on all platforms (e.g., A10G), so only use max_split_size_mb
     env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
     env["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-    env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable our custom memory monitoring in collective ops
+    env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable collective communication monitoring
+    env["ENABLE_HEAD_MEMORY_MONITOR"] = "1"  # Enable fine-grained head monitoring
 
     print(f"[Torchrun] Command: {' '.join(cmd)}")
 
@@ -290,6 +295,7 @@ def main(
     dataset_tag: str = "tomato-small-2",
     model_tag: str = "hy-wm-2.0",
     gpu_mode: str = "1gpu",
+    frames_chunk_size: int = 1,
 ):
     """
     Local entrypoint to run HY-World-2.0 inference on Modal.
@@ -298,6 +304,7 @@ def main(
         dataset_tag: Dataset identifier
         model_tag: Model version identifier
         gpu_mode: GPU configuration mode - either "1gpu" or "fsdp"
+        frames_chunk_size: Number of frames to process per chunk (default: 1)
     """
     if gpu_mode not in ["1gpu", "fsdp"]:
         print(f"Error: gpu_mode must be '1gpu' or 'fsdp', got '{gpu_mode}'")
@@ -305,10 +312,11 @@ def main(
 
     print(f"Launching Modal inference for dataset '{dataset_tag}' with model '{model_tag}'")
     print(f"GPU Mode: {gpu_mode}")
+    print(f"Frames chunk size: {frames_chunk_size}")
 
     if gpu_mode == "1gpu":
-        run_inference_1gpu.remote(dataset_tag=dataset_tag, model_tag=model_tag)
+        run_inference_1gpu.remote(dataset_tag=dataset_tag, model_tag=model_tag, frames_chunk_size=frames_chunk_size)
     else:  # fsdp
-        run_inference_fsdp.remote(dataset_tag=dataset_tag, model_tag=model_tag)
+        run_inference_fsdp.remote(dataset_tag=dataset_tag, model_tag=model_tag, frames_chunk_size=frames_chunk_size)
 
     print(f"Results will be in Modal volume at /data/output/{model_tag}/{dataset_tag}")

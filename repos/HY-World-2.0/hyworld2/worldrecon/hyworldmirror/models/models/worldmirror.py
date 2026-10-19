@@ -259,6 +259,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
         is_inference=True,
         sp_size=1,
         sp_group=None,
+        frames_chunk_size=1,
     ):
         """Execute forward pass through the WorldMirror model.
 
@@ -293,18 +294,18 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
             if sp_size > 1:
                 preds = self._gen_all_preds_frame_sp(
                     token_list, imgs, patch_start_idx, views, cond_flags,
-                    is_inference, sp_size, sp_group,
+                    is_inference, sp_size, sp_group, frames_chunk_size,
                 )
             else:
                 preds = self._gen_all_preds(
-                    token_list, imgs, patch_start_idx, views, cond_flags, is_inference,
+                    token_list, imgs, patch_start_idx, views, cond_flags, is_inference, frames_chunk_size,
                 )
 
         return preds
 
     def _gen_all_preds_frame_sp(
         self, token_list, imgs, patch_start_idx, views, cond_flags, is_inference,
-        sp_size, sp_group,
+        sp_size, sp_group, frames_chunk_size=1,
     ):
         """Generate predictions with frame-parallel DPT heads for SP inference.
 
@@ -387,6 +388,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                 if self.enable_depth_mask:
                     depth_padded, depth_conf_padded, depth_mask_padded = self.depth_head(
                         token_list_chunk, images=imgs_chunk, patch_start_idx=patch_start_idx,
+                        frames_chunk_size=frames_chunk_size,
                     )
                     depth_chunk = depth_padded[:, :my_count]
                     depth_conf_chunk = depth_conf_padded[:, :my_count]
@@ -394,6 +396,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                 else:
                     depth_padded, depth_conf_padded = self.depth_head(
                         token_list_chunk, images=imgs_chunk, patch_start_idx=patch_start_idx,
+                        frames_chunk_size=frames_chunk_size,
                     )
                     depth_chunk = depth_padded[:, :my_count]
                     depth_conf_chunk = depth_conf_padded[:, :my_count]
@@ -416,6 +419,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
             if run_heads:
                 pts_padded, pts_conf_padded = self.pts_head(
                     token_list_chunk, images=imgs_chunk, patch_start_idx=patch_start_idx,
+                    frames_chunk_size=frames_chunk_size,
                 )
                 pts_chunk = pts_padded[:, :my_count]
                 pts_conf_chunk = pts_conf_padded[:, :my_count]
@@ -430,6 +434,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
             if run_heads:
                 norm_padded, norm_conf_padded = self.norm_head(
                     token_list_chunk, images=imgs_chunk, patch_start_idx=patch_start_idx,
+                    frames_chunk_size=frames_chunk_size,
                 )
                 normals_chunk = norm_padded[:, :my_count]
                 norm_conf_chunk = norm_conf_padded[:, :my_count]
@@ -475,6 +480,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     if self.enable_depth_mask:
                         gs_feat_p, gs_depth_p, gs_depth_conf_p, gs_dmask_p = self.gs_head(
                             gs_token_chunk, images=gs_imgs_chunk, patch_start_idx=patch_start_idx,
+                            frames_chunk_size=frames_chunk_size,
                         )
                         gs_feat_chunk = gs_feat_p[:, :my_count]
                         gs_depth_chunk = gs_depth_p[:, :my_count]
@@ -483,6 +489,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     else:
                         gs_feat_p, gs_depth_p, gs_depth_conf_p = self.gs_head(
                             gs_token_chunk, images=gs_imgs_chunk, patch_start_idx=patch_start_idx,
+                            frames_chunk_size=frames_chunk_size,
                         )
                         gs_feat_chunk = gs_feat_p[:, :my_count]
                         gs_depth_chunk = gs_depth_p[:, :my_count]
@@ -573,7 +580,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
         return torch.cat(valid_chunks, dim=dim).contiguous()
 
     def _gen_all_preds(
-        self, token_list, imgs, patch_start_idx, views, cond_flags, is_inference
+        self, token_list, imgs, patch_start_idx, views, cond_flags, is_inference, frames_chunk_size=1
     ):
         """Generate all enabled predictions (single-GPU path)."""
         preds = {}
@@ -592,12 +599,14 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
             if self.enable_depth_mask:
                 depth, depth_conf, depth_mask_logits = self.depth_head(
                     token_list, images=imgs, patch_start_idx=patch_start_idx,
+                    frames_chunk_size=frames_chunk_size,
                 )
                 preds["depth_mask_logits"] = depth_mask_logits
                 preds["depth_mask"] = depth_mask_logits.sigmoid()
             else:
                 depth, depth_conf = self.depth_head(
                     token_list, images=imgs, patch_start_idx=patch_start_idx,
+                    frames_chunk_size=frames_chunk_size,
                 )
             preds["depth"] = depth
             preds["depth_conf"] = depth_conf
@@ -605,6 +614,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
         if self.enable_pts:
             pts, pts_conf = self.pts_head(
                 token_list, images=imgs, patch_start_idx=patch_start_idx,
+                frames_chunk_size=frames_chunk_size,
             )
             preds["pts3d"] = pts
             preds["pts3d_conf"] = pts_conf
@@ -612,6 +622,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
         if self.enable_norm:
             normals, norm_conf = self.norm_head(
                 token_list, images=imgs, patch_start_idx=patch_start_idx,
+                frames_chunk_size=frames_chunk_size,
             )
             preds["normals"] = normals
             preds["normals_conf"] = norm_conf
@@ -623,6 +634,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     context_preds.get("token_list", token_list),
                     images=context_preds.get("imgs", imgs),
                     patch_start_idx=patch_start_idx,
+                    frames_chunk_size=frames_chunk_size,
                 )
                 preds["gs_depth_mask_logits"] = gs_depth_mask_logits
                 preds["gs_depth_mask"] = gs_depth_mask_logits.sigmoid()
@@ -631,6 +643,7 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     context_preds.get("token_list", token_list),
                     images=context_preds.get("imgs", imgs),
                     patch_start_idx=patch_start_idx,
+                    frames_chunk_size=frames_chunk_size,
                 )
 
             preds["gs_depth"] = gs_depth

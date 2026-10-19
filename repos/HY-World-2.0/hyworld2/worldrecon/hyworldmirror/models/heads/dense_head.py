@@ -1,5 +1,6 @@
 # inspired by https://github.com/DepthAnything/Depth-Anything-V2
 from typing import List, Tuple, Union
+import os
 
 import torch
 import torch.nn as nn
@@ -8,6 +9,17 @@ from torch.utils.checkpoint import checkpoint
 
 from ..layers.mlp import MlpFP32
 from ..utils.grid import create_uv_grid, position_grid_to_embed
+
+# Import memory monitoring if enabled
+ENABLE_HEAD_MEMORY_MONITOR = os.environ.get("ENABLE_HEAD_MEMORY_MONITOR", "0") == "1"
+if ENABLE_HEAD_MEMORY_MONITOR:
+    try:
+        from ...memory_monitor import memory_checkpoint
+    except ImportError:
+        from contextlib import contextmanager
+        @contextmanager
+        def memory_checkpoint(label, device, verbose=True):
+            yield
 
 
 class _BaseDPTHead(nn.Module):
@@ -335,23 +347,47 @@ class DPTHead(_BaseDPTHead):
 
         B, S, _, H, W = images.shape
 
-        fused = self._extract_fused_features(token_list, B, S, H, W, patch_start_idx, frame_start, frame_end)
+        if ENABLE_HEAD_MEMORY_MONITOR and torch.cuda.is_available():
+            device = images.device
+            with memory_checkpoint(f"[DenseHead] Extract fused features (B={B}, S={S})", device):
+                fused = self._extract_fused_features(token_list, B, S, H, W, patch_start_idx, frame_start, frame_end)
+        else:
+            fused = self._extract_fused_features(token_list, B, S, H, W, patch_start_idx, frame_start, frame_end)
 
         # Generate predictions and confidence
         if self.is_gsdpt:
-            out = self.scratch.output_conv2(fused.float().contiguous())
+            if ENABLE_HEAD_MEMORY_MONITOR and torch.cuda.is_available():
+                device = fused.device
+                with memory_checkpoint(f"[DenseHead/GS] output_conv2 (shape={fused.shape})", device):
+                    out = self.scratch.output_conv2(fused.float().contiguous())
+            else:
+                out = self.scratch.output_conv2(fused.float().contiguous())
+
             if self.enable_depth_mask:
                 preds, conf, depth_mask = self.activate_head(out, activation=self.activation)
             else:
                 preds, conf = self.activate_head(out, activation=self.activation)
             preds = preds.reshape(B, S, *preds.shape[1:])
             conf = conf.reshape(B, S, *conf.shape[1:])
-            
+
             # Merge direct image features
-            img_flat = images.reshape(B * S, -1, H, W)
-            img_feat = self.input_merger(img_flat)
-            fused = fused + img_feat
-            fused = fused.reshape(B, S, *fused.shape[1:]).float().contiguous()
+            if ENABLE_HEAD_MEMORY_MONITOR and torch.cuda.is_available():
+                device = images.device
+                with memory_checkpoint(f"[DenseHead/GS] Merge image features (B*S={B*S})", device):
+                    img_flat = images.reshape(B * S, -1, H, W)
+                    img_feat = self.input_merger(img_flat)
+                    fused = fused + img_feat
+            else:
+                img_flat = images.reshape(B * S, -1, H, W)
+                img_feat = self.input_merger(img_flat)
+                fused = fused + img_feat
+
+            if ENABLE_HEAD_MEMORY_MONITOR and torch.cuda.is_available():
+                device = fused.device
+                with memory_checkpoint(f"[DenseHead/GS] ⚠️  RESHAPE B,S (B={B}, S={S}, shape={fused.shape})", device):
+                    fused = fused.reshape(B, S, *fused.shape[1:]).float().contiguous()
+            else:
+                fused = fused.reshape(B, S, *fused.shape[1:]).float().contiguous()
             if self.enable_depth_mask:
                 depth_mask = depth_mask.reshape(B, S, *depth_mask.shape[1:])
                 return fused, preds, conf, depth_mask

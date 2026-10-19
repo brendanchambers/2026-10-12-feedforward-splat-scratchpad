@@ -48,6 +48,7 @@ def main(
     verbose: bool = False,
     delete_data: bool = False,
     gpu_mode: str = "1gpu",
+    frames_chunk_size: int = 1,
 ):
     """
     Run the full pipeline: upload data, run feedforard inference, post hoc classical optimize (optional), download results.
@@ -105,6 +106,7 @@ def main(
         "--dataset-tag", dataset_tag,
         "--model-tag", model_tag,
         "--gpu-mode", gpu_mode,
+        "--frames-chunk-size", str(frames_chunk_size),
     ]
     if verbose:
         inference_cmd.append("--verbose")

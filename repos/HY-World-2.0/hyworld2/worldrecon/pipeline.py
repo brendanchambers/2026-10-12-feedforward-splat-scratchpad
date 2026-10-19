@@ -466,6 +466,8 @@ class WorldMirrorPipeline:
         save_rendered: bool = False,
         render_interp_per_pair: int = 15,
         render_depth: bool = False,
+        # Memory optimization
+        frames_chunk_size: int = 1,
         # Misc
         log_time: bool = True,
         strict_output_path: str = None,
@@ -517,7 +519,7 @@ class WorldMirrorPipeline:
         t0_all = time.perf_counter()
         try:
             predictions, imgs, infer_time = self._run_inference(
-                img_paths, effective, prior_cam_path, prior_depth_path)
+                img_paths, effective, prior_cam_path, prior_depth_path, frames_chunk_size)
         except ValueError as e:
             if rank == 0:
                 print(f"[Pipeline] Skipping '{input_path}': {e}")
@@ -624,7 +626,7 @@ class WorldMirrorPipeline:
 
         return str(outdir)
 
-    def _run_inference(self, img_paths, target_size, prior_cam_path, prior_depth_path):
+    def _run_inference(self, img_paths, target_size, prior_cam_path, prior_depth_path, frames_chunk_size):
         """Run model forward pass."""
         device = self.device
 
@@ -674,7 +676,7 @@ class WorldMirrorPipeline:
         t0 = time.perf_counter()
         with memory_checkpoint("Model forward pass (main OOM location)", device, verbose=(self.rank == 0)):
             with torch.amp.autocast("cuda", enabled=(not model_bf16 and use_amp), dtype=torch.bfloat16):
-                fwd_kw = dict(views=views, cond_flags=cond_flags, is_inference=True)
+                fwd_kw = dict(views=views, cond_flags=cond_flags, is_inference=True, frames_chunk_size=frames_chunk_size)
                 if self.sp_size > 1:
                     fwd_kw["sp_size"] = self.sp_size
                     fwd_kw["sp_group"] = self.sp_group
@@ -796,6 +798,8 @@ def main():
                         help="Interpolated frames per camera pair for video rendering")
     parser.add_argument("--render_depth", action="store_true", default=False,
                         help="Also render depth video")
+    parser.add_argument("--frames_chunk_size", type=int, default=1,
+                        help="Process frames in chunks to reduce memory usage (default: 1)")
     parser.add_argument("--log_time", action="store_true", default=True)
     parser.add_argument("--no_log_time", dest="log_time", action="store_false")
     parser.add_argument("--no_interactive", action="store_true")
@@ -842,6 +846,7 @@ def main():
         save_rendered=args.save_rendered,
         render_interp_per_pair=args.render_interp_per_pair,
         render_depth=args.render_depth,
+        frames_chunk_size=args.frames_chunk_size,
         log_time=args.log_time,
         strict_output_path=args.strict_output_path,
     )
