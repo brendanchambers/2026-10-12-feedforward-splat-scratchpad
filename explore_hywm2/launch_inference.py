@@ -197,7 +197,7 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
 
 @app.function(
     image=image,
-    gpu="A100:2",  # 2x A10G GPUs for FSDP
+    gpu="A100-80GB:2",  # 2x A10G GPUs for FSDP
     timeout=3600,
     volumes={"/data": data_volume},
 )
