@@ -101,7 +101,7 @@ data_volume = modal.Volume.from_name("feedforward-3dgs-data", create_if_missing=
 
 @app.function(
     image=image,
-    gpu="A100-80GB",  # Single A100 80GB GPU
+    gpu="A10G", 
     timeout=3600,
     volumes={"/data": data_volume},
 )
@@ -186,7 +186,7 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
 
 @app.function(
     image=image,
-    gpu="A100-80GB:2",  # 2x A100 80GB GPUs for FSDP
+    gpu="A10G:2",  # 2x A100 80GB GPUs for FSDP
     timeout=3600,
     volumes={"/data": data_volume},
 )

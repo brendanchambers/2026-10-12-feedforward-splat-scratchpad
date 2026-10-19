@@ -1,34 +1,22 @@
 # Simple Feedforward 3DGS with WorldMirror
 
-Simplest example of running WorldMirror 2 inference on Modal cloud GPU.
+Simple example running WorldMirror 2 inference on Modal cloud GPUs.
 
-## Prerequisites
-
-1. Set up Modal account and authenticate:
-```bash
-uv run --with modal modal setup
-```
 
 ## Usage
 
  
 convenience outer pipeline:
   # Single GPU mode (default)
-  uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-32 --model-tag hy-wm-2.0
+  uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-small --model-tag hy-wm-2.0 --gpu-mode 1gpu
 
   # FSDP mode
-  uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-32 --model-tag hy-wm-2.0 --gpu-mode fsdp
-
-
+  uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag tomato-small --model-tag hy-wm-2.0 --gpu-mode fsdp
   
 
 ## GPU Configuration
 
-The script uses an A10G GPU (24GB VRAM required for 16 images). For smaller datasets (fewer images), you can use a T4 GPU by editing `simple_feedforward_3dgs.py`:
-
-```python
-gpu="A10G"  # Options: "T4" (14GB), "A10G" (24GB), "A100" (40GB)
-```
+To keep costs low, use A10G for small dev and A100:80G for larger dev.  
 
 ## Data Management
 
@@ -38,10 +26,10 @@ For a fresh run with clean data, use the `--delete-data` flag or the standalone 
 
 ```bash
 # Delete data as part of pipeline (recommended for fresh runs)
-uv run --with modal modal run explore/pipeline.py --dataset-tag my-images --delete-data
+uv run --with modal modal run explore_hywm2/pipeline.py --dataset-tag my-images --delete-data
 
 # Or use standalone delete script
-uv run --with modal modal run quick-comparison/delete_data.py --dataset-tag my-images
+uv run --with modal modal run explore_hywm2/delete_data.py --dataset-tag my-images
 ```
 
 This removes both incoming and output data for the specified dataset tag from the Modal volume.
@@ -49,10 +37,6 @@ This removes both incoming and output data for the specified dataset tag from th
 ### Volume Synchronization
 
 The scripts use Modal's `volume.reload()` to ensure fresh data visibility:
-- **Upload → Inference**: Inference reloads to see uploaded images
-- **Inference → Optimization**: Optimization reloads to see inference outputs
-- **Optimization → Download**: Download reloads to see optimized results
-
 This prevents stale data issues when running sequential jobs.
 
 ## Viewing Results
@@ -60,31 +44,7 @@ This prevents stale data issues when running sequential jobs.
 Use any web-based Gaussian Splat viewer:
 - [SuperSplat](https://playcanvas.com/supersplat)
 
-Compare the original (`gaussians.ply`) vs optimized (`optimized/saves/*.ply`) results.
-
-## After Refactor
-
-The pipeline now supports multiple model versions via the `--model-tag` parameter. This allows you to easily switch between different inference models.
-
 ### Supported Models
 
 - `hy-wm-2.0` - HunyuanWorld-Mirror 2.0 (uses `launch_inference.py`)
 
-### Output Structure
-
-Results are now organized by model version:
-```
-data/output/
-├── hy-wm-1.1/
-│   └── tomato-small-2/
-│       ├── images/
-│       ├── sparse/
-│       └── gaussians.ply
-└── hy-wm-2.0/
-    └── tomato-small-2/
-        ├── images/
-        ├── sparse/
-        └── gaussians.ply
-```
-
-This allows easy comparison between different model versions on the same dataset.

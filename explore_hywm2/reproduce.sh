@@ -22,3 +22,16 @@ uv run --with modal modal run explore_hywm2/pipeline.py \
 
 
 
+# Tomato-small scene
+# ~16 views of spring garden, camera views sample all sides
+#  OOMs on 1x A10 using default flags. wip fix this
+
+# 
+uv run --with modal modal run explore_hywm2/pipeline.py \
+    --dataset-tag tomato-small \
+    --model-tag hy-wm-2.0 \
+    --gpu-mode fsdp \
+    --delete-data
+
+
+
