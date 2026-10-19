@@ -56,6 +56,7 @@ from .hyworldmirror.utils.inference_utils import (
     print_and_save_timings,
 )
 from .hyworldmirror.utils.render_utils import render_interpolated_video
+from .memory_monitor import memory_checkpoint, log_memory_summary
 
 
 # ============================================================
@@ -626,11 +627,13 @@ class WorldMirrorPipeline:
     def _run_inference(self, img_paths, target_size, prior_cam_path, prior_depth_path):
         """Run model forward pass."""
         device = self.device
-        imgs = prepare_images_to_tensor(
-            img_paths, target_size=target_size, resize_strategy="crop"
-        ).to(device)
-        views = {"img": imgs}
-        B, S, C, H, W = imgs.shape
+
+        with memory_checkpoint("Image loading and preprocessing", device, verbose=(self.rank == 0)):
+            imgs = prepare_images_to_tensor(
+                img_paths, target_size=target_size, resize_strategy="crop"
+            ).to(device)
+            views = {"img": imgs}
+            B, S, C, H, W = imgs.shape
 
         if self.sp_size > 1 and S < self.sp_size:
             raise ValueError(
@@ -646,34 +649,36 @@ class WorldMirrorPipeline:
         pp_xform = compute_preprocessing_transform(img_paths, target_size)
         cond_flags = [0, 0, 0]
 
-        if prior_cam_path and os.path.isfile(prior_cam_path):
-            extr, intr = load_prior_camera(prior_cam_path, img_paths, preprocess_transform=pp_xform)
-            if extr is not None:
-                first = extr[0, 0]
-                extr = torch.linalg.inv(first.float()).to(first.dtype).unsqueeze(0).unsqueeze(0) @ extr
-                views["camera_poses"] = extr.to(device)
-                cond_flags[0] = 1
-            if intr is not None:
-                views["camera_intrs"] = intr.to(device)
-                cond_flags[2] = 1
+        with memory_checkpoint("Loading prior camera/depth (if provided)", device, verbose=(self.rank == 0)):
+            if prior_cam_path and os.path.isfile(prior_cam_path):
+                extr, intr = load_prior_camera(prior_cam_path, img_paths, preprocess_transform=pp_xform)
+                if extr is not None:
+                    first = extr[0, 0]
+                    extr = torch.linalg.inv(first.float()).to(first.dtype).unsqueeze(0).unsqueeze(0) @ extr
+                    views["camera_poses"] = extr.to(device)
+                    cond_flags[0] = 1
+                if intr is not None:
+                    views["camera_intrs"] = intr.to(device)
+                    cond_flags[2] = 1
 
-        if prior_depth_path and os.path.isdir(prior_depth_path):
-            depth = load_prior_depth(prior_depth_path, img_paths, H, W, preprocess_transform=pp_xform)
-            if depth is not None:
-                views["depthmap"] = depth.to(device)
-                cond_flags[1] = 1
+            if prior_depth_path and os.path.isdir(prior_depth_path):
+                depth = load_prior_depth(prior_depth_path, img_paths, H, W, preprocess_transform=pp_xform)
+                if depth is not None:
+                    views["depthmap"] = depth.to(device)
+                    cond_flags[1] = 1
 
         use_amp = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
         inner = self.model.module if hasattr(self.model, 'module') else self.model
         model_bf16 = getattr(inner, 'enable_bf16', False)
 
         t0 = time.perf_counter()
-        with torch.amp.autocast("cuda", enabled=(not model_bf16 and use_amp), dtype=torch.bfloat16):
-            fwd_kw = dict(views=views, cond_flags=cond_flags, is_inference=True)
-            if self.sp_size > 1:
-                fwd_kw["sp_size"] = self.sp_size
-                fwd_kw["sp_group"] = self.sp_group
-            predictions = self.model(**fwd_kw)
+        with memory_checkpoint("Model forward pass (main OOM location)", device, verbose=(self.rank == 0)):
+            with torch.amp.autocast("cuda", enabled=(not model_bf16 and use_amp), dtype=torch.bfloat16):
+                fwd_kw = dict(views=views, cond_flags=cond_flags, is_inference=True)
+                if self.sp_size > 1:
+                    fwd_kw["sp_size"] = self.sp_size
+                    fwd_kw["sp_group"] = self.sp_group
+                predictions = self.model(**fwd_kw)
         if device.type == "cuda":
             torch.cuda.synchronize()
         infer_time = time.perf_counter() - t0

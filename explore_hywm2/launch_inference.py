@@ -169,6 +169,11 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
     env = os.environ.copy()
     env["PYTHONPATH"] = str(repo_path) + ":" + env.get("PYTHONPATH", "")
 
+    # Enable CUDA memory debugging and OOM diagnostics
+    # Note: expandable_segments not supported on all platforms (e.g., A10G), so only use max_split_size_mb
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable our custom memory monitoring
+
     print(f"[Pipeline] Command: {' '.join(cmd)}")
 
     # Run pipeline
@@ -258,6 +263,12 @@ def run_inference_fsdp(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
     # Set PYTHONPATH to include frozen repo
     env = os.environ.copy()
     env["PYTHONPATH"] = str(repo_path) + ":" + env.get("PYTHONPATH", "")
+
+    # Enable CUDA memory debugging and OOM diagnostics
+    # Note: expandable_segments not supported on all platforms (e.g., A10G), so only use max_split_size_mb
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    env["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+    env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable our custom memory monitoring in collective ops
 
     print(f"[Torchrun] Command: {' '.join(cmd)}")
 
