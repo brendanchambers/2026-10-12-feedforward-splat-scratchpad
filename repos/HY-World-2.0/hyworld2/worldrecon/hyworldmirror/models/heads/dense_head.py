@@ -18,7 +18,7 @@ if ENABLE_HEAD_MEMORY_MONITOR:
     except ImportError:
         from contextlib import contextmanager
         @contextmanager
-        def memory_checkpoint(label, device, verbose=True):
+        def memory_checkpoint(label, device, verbose=False):
             yield
 
 

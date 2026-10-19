@@ -172,8 +172,7 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
     env["PYTHONPATH"] = str(repo_path) + ":" + env.get("PYTHONPATH", "")
 
     # Enable CUDA memory debugging and OOM diagnostics
-    # Note: expandable_segments not supported on all platforms (e.g., A10G), so only use max_split_size_mb
-    env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable collective communication monitoring
     env["ENABLE_HEAD_MEMORY_MONITOR"] = "1"  # Enable fine-grained head monitoring
 
@@ -194,7 +193,7 @@ def run_inference_1gpu(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
 
 @app.function(
     image=image,
-    gpu="A10G:2",  # 2x A10G GPUs for FSDP
+    gpu="A100:2",  # 2x A10G GPUs for FSDP
     timeout=3600,
     volumes={"/data": data_volume},
 )
@@ -269,11 +268,15 @@ def run_inference_fsdp(dataset_tag: str = "tomato-small-2", model_tag: str = "hy
     env["PYTHONPATH"] = str(repo_path) + ":" + env.get("PYTHONPATH", "")
 
     # Enable CUDA memory debugging and OOM diagnostics
-    # Note: expandable_segments not supported on all platforms (e.g., A10G), so only use max_split_size_mb
-    env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
-    env["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+    env["TORCH_DISTRIBUTED_DEBUG"] = "OFF"
     env["ENABLE_COMM_MEMORY_MONITOR"] = "1"  # Enable collective communication monitoring
     env["ENABLE_HEAD_MEMORY_MONITOR"] = "1"  # Enable fine-grained head monitoring
+
+    # Reduce NCCL logging verbosity
+    env["NCCL_DEBUG"] = "WARN"
+    env["NCCL_DEBUG_SUBSYS"] = ""  # Empty to disable subsystem-specific logging
+    env["CUDA_LAUNCH_BLOCKING"] = "0"
 
     print(f"[Torchrun] Command: {' '.join(cmd)}")
 

@@ -36,6 +36,7 @@ from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     ShardingStrategy,
     CPUOffload,
+    MixedPrecision
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 
@@ -57,6 +58,13 @@ from .hyworldmirror.utils.inference_utils import (
 )
 from .hyworldmirror.utils.render_utils import render_interpolated_video
 from .memory_monitor import memory_checkpoint, log_memory_summary
+
+
+# ============================================================
+# Memory monitoring configuration
+# ============================================================
+
+PIPELINE_MEMORY_VERBOSE = os.environ.get("PIPELINE_MEMORY_VERBOSE", "0") == "1"
 
 
 # ============================================================
@@ -250,13 +258,23 @@ def _wrap_model_fsdp(model, sp_group, device, use_cpu_offload=False, enable_bf16
         auto_wrap_policy = functools.partial(
             transformer_auto_wrap_policy, transformer_layer_cls=wrap_cls)
 
+    # 1. Define the Mixed Precision Policy
+    # bfloat16 is highly recommended for Ampere+ GPUs to avoid overflow issues
+    mp_policy = MixedPrecision(
+        param_dtype=torch.bfloat16,
+        reduce_dtype=torch.bfloat16,  # Precision for gradient communication
+        buffer_dtype=torch.bfloat16   # Precision for internal buffers
+    )
+
     fsdp_model = FSDP(
         model, process_group=sp_group,
         sharding_strategy=ShardingStrategy.FULL_SHARD,
-        auto_wrap_policy=auto_wrap_policy, mixed_precision=None,
+        auto_wrap_policy=auto_wrap_policy,
+        mixed_precision=mp_policy,
         cpu_offload=CPUOffload(offload_params=True) if use_cpu_offload else None,
         device_id=device, use_orig_params=True, sync_module_states=True,
         forward_prefetch=False,
+        limit_all_gathers=True,
     )
 
     rank = dist.get_rank()
@@ -630,7 +648,7 @@ class WorldMirrorPipeline:
         """Run model forward pass."""
         device = self.device
 
-        with memory_checkpoint("Image loading and preprocessing", device, verbose=(self.rank == 0)):
+        with memory_checkpoint("Image loading and preprocessing", device, verbose=(self.rank == 0 and PIPELINE_MEMORY_VERBOSE)):
             imgs = prepare_images_to_tensor(
                 img_paths, target_size=target_size, resize_strategy="crop"
             ).to(device)
@@ -651,7 +669,7 @@ class WorldMirrorPipeline:
         pp_xform = compute_preprocessing_transform(img_paths, target_size)
         cond_flags = [0, 0, 0]
 
-        with memory_checkpoint("Loading prior camera/depth (if provided)", device, verbose=(self.rank == 0)):
+        with memory_checkpoint("Loading prior camera/depth (if provided)", device, verbose=(self.rank == 0 and PIPELINE_MEMORY_VERBOSE)):
             if prior_cam_path and os.path.isfile(prior_cam_path):
                 extr, intr = load_prior_camera(prior_cam_path, img_paths, preprocess_transform=pp_xform)
                 if extr is not None:
@@ -674,7 +692,7 @@ class WorldMirrorPipeline:
         model_bf16 = getattr(inner, 'enable_bf16', False)
 
         t0 = time.perf_counter()
-        with memory_checkpoint("Model forward pass (main OOM location)", device, verbose=(self.rank == 0)):
+        with memory_checkpoint("Model forward pass (main OOM location)", device, verbose=(self.rank == 0 and PIPELINE_MEMORY_VERBOSE)):
             with torch.amp.autocast("cuda", enabled=(not model_bf16 and use_amp), dtype=torch.bfloat16):
                 fwd_kw = dict(views=views, cond_flags=cond_flags, is_inference=True, frames_chunk_size=frames_chunk_size)
                 if self.sp_size > 1:

@@ -14,7 +14,7 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def memory_checkpoint(label: str, device, threshold_gb=None, verbose=True):
+def memory_checkpoint(label: str, device, threshold_gb=None, verbose=False):
     """Monitor GPU memory usage around a code block and detect OOMs.
 
     Args:

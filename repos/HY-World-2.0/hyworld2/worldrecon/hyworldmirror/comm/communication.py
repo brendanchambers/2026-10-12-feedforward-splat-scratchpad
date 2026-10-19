@@ -4,6 +4,7 @@ import os
 
 # Memory monitoring for collective operations
 ENABLE_COMM_MEMORY_MONITOR = os.environ.get("ENABLE_COMM_MEMORY_MONITOR", "0") == "1"
+COMM_MEMORY_VERBOSE = os.environ.get("COMM_MEMORY_VERBOSE", "0") == "1"
 
 if ENABLE_COMM_MEMORY_MONITOR:
     try:
@@ -12,7 +13,7 @@ if ENABLE_COMM_MEMORY_MONITOR:
         # Fallback if memory_monitor not available
         from contextlib import contextmanager
         @contextmanager
-        def memory_checkpoint(label, device, verbose=True):
+        def memory_checkpoint(label, device, verbose=False):
             yield
 
 def all2all(tensor, scatter_dim, gather_dim, cur_group, async_op):
@@ -21,7 +22,7 @@ def all2all(tensor, scatter_dim, gather_dim, cur_group, async_op):
     if ENABLE_COMM_MEMORY_MONITOR and tensor.is_cuda:
         device = tensor.device
         rank = dist.get_rank()
-        with memory_checkpoint(f"[Rank {rank}] all2all (scatter_dim={scatter_dim}, gather_dim={gather_dim})", device, verbose=True):
+        with memory_checkpoint(f"[Rank {rank}] all2all (scatter_dim={scatter_dim}, gather_dim={gather_dim})", device, verbose=COMM_MEMORY_VERBOSE):
             scatter_tensor_list = list(chunk.contiguous() for chunk in torch.chunk(tensor, chunks=group_size, dim=scatter_dim))
             gather_tensor_list = [torch.zeros_like(x) for x in scatter_tensor_list]
             comm = dist.all_to_all(gather_tensor_list, scatter_tensor_list, group=cur_group, async_op=async_op)
@@ -53,7 +54,7 @@ def all_gather(tensor, gather_dim, cur_group, async_op):
     if ENABLE_COMM_MEMORY_MONITOR and tensor.is_cuda:
         device = tensor.device
         rank = dist.get_rank()
-        with memory_checkpoint(f"[Rank {rank}] all_gather (gather_dim={gather_dim})", device, verbose=True):
+        with memory_checkpoint(f"[Rank {rank}] all_gather (gather_dim={gather_dim})", device, verbose=COMM_MEMORY_VERBOSE):
             gather_list = [torch.zeros_like(tensor) for _ in range(group_size)]
             comm = dist.all_gather(gather_list, tensor, group=cur_group, async_op=async_op)
             gather_tensor = torch.cat(gather_list, dim=gather_dim)
