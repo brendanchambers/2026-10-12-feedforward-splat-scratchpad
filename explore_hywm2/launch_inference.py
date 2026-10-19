@@ -12,6 +12,9 @@ import modal
 # Modal app configuration
 app = modal.App("feedforward-3dgs-hy-wm-2.0")
 
+# Image version - update this to force Modal to rebuild the image
+IMAGE_VERSION = "2026-10-19-v2-fsdp-dtype-fix"
+
 
 def download_models():
     """Download HY-World-2.0 model during image build to avoid runtime downloads."""
@@ -92,6 +95,7 @@ image = (
     .run_commands(
         "git clone https://github.com/brendanchambers/2026-10-12-feedforward-splat-scratchpad.git /root/repo",
         "cd /root/repo && git pull origin main",  # Ensure we have latest changes
+        f"echo 'Image version: {IMAGE_VERSION}'",  # Change IMAGE_VERSION constant to force rebuild
     )
     .run_function(download_models)
 )
