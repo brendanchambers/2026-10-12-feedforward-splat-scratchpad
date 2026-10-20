@@ -406,11 +406,11 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                 if self.enable_depth_mask:
                     depth_mask_logits_chunk = torch.zeros(B, 0, H, W, dtype=imgs.dtype, device=imgs.device)
 
-            preds["depth"] = self._frame_allgather_variable(depth_chunk, my_count, S, sp_size, sp_group, dim=1)
-            preds["depth_conf"] = self._frame_allgather_variable(depth_conf_chunk, my_count, S, sp_size, sp_group, dim=1)
+            preds["depth"] = self._frame_allgather_variable_chunked(depth_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32)
+            preds["depth_conf"] = self._frame_allgather_variable_chunked(depth_conf_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32)
             if self.enable_depth_mask:
-                depth_mask_logits_full = self._frame_allgather_variable(
-                    depth_mask_logits_chunk, my_count, S, sp_size, sp_group, dim=1,
+                depth_mask_logits_full = self._frame_allgather_variable_chunked(
+                    depth_mask_logits_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32,
                 )
                 preds["depth_mask_logits"] = depth_mask_logits_full
                 preds["depth_mask"] = depth_mask_logits_full.sigmoid()
@@ -427,8 +427,8 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                 pts_chunk = torch.zeros(B, 0, H, W, 3, dtype=imgs.dtype, device=imgs.device)
                 pts_conf_chunk = torch.zeros(B, 0, H, W, dtype=imgs.dtype, device=imgs.device)
 
-            preds["pts3d"] = self._frame_allgather_variable(pts_chunk, my_count, S, sp_size, sp_group, dim=1)
-            preds["pts3d_conf"] = self._frame_allgather_variable(pts_conf_chunk, my_count, S, sp_size, sp_group, dim=1)
+            preds["pts3d"] = self._frame_allgather_variable_chunked(pts_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32)
+            preds["pts3d_conf"] = self._frame_allgather_variable_chunked(pts_conf_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32)
 
         if self.enable_norm:
             if run_heads:
@@ -442,8 +442,8 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                 normals_chunk = torch.zeros(B, 0, H, W, 3, dtype=imgs.dtype, device=imgs.device)
                 norm_conf_chunk = torch.zeros(B, 0, H, W, dtype=imgs.dtype, device=imgs.device)
 
-            preds["normals"] = self._frame_allgather_variable(normals_chunk, my_count, S, sp_size, sp_group, dim=1)
-            preds["normals_conf"] = self._frame_allgather_variable(norm_conf_chunk, my_count, S, sp_size, sp_group, dim=1)
+            preds["normals"] = self._frame_allgather_variable_chunked(normals_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32)
+            preds["normals_conf"] = self._frame_allgather_variable_chunked(norm_conf_chunk, my_count, S, sp_size, sp_group, dim=1, max_frames_per_chunk=32)
 
         # GS head: frame-parallel, then render on full gathered data
         if self.enable_gs:
@@ -502,12 +502,12 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     if self.enable_depth_mask:
                         gs_dmask_chunk = torch.zeros(B, 0, H, W, dtype=imgs.dtype, device=imgs.device)
 
-                gs_feat = self._frame_allgather_variable(gs_feat_chunk, my_count, gs_S, sp_size, sp_group, dim=1)
-                gs_depth = self._frame_allgather_variable(gs_depth_chunk, my_count, gs_S, sp_size, sp_group, dim=1)
-                gs_depth_conf = self._frame_allgather_variable(gs_depth_conf_chunk, my_count, gs_S, sp_size, sp_group, dim=1)
+                gs_feat = self._frame_allgather_variable_chunked(gs_feat_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16)
+                gs_depth = self._frame_allgather_variable_chunked(gs_depth_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16)
+                gs_depth_conf = self._frame_allgather_variable_chunked(gs_depth_conf_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16)
                 if self.enable_depth_mask:
-                    gs_depth_mask_logits = self._frame_allgather_variable(
-                        gs_dmask_chunk, my_count, gs_S, sp_size, sp_group, dim=1,
+                    gs_depth_mask_logits = self._frame_allgather_variable_chunked(
+                        gs_dmask_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16,
                     )
                     preds["gs_depth_mask_logits"] = gs_depth_mask_logits
                     preds["gs_depth_mask"] = gs_depth_mask_logits.sigmoid()
@@ -578,6 +578,117 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                 valid_chunks.append(gathered_list[r][tuple(slices)])
 
         return torch.cat(valid_chunks, dim=dim).contiguous()
+
+    def _frame_allgather_variable_chunked(self, chunk, my_count, total_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16):
+        """Allgather tensors in chunks to reduce peak memory usage.
+
+        This function splits the all-gather operation into smaller chunks to avoid OOM errors
+        when dealing with large numbers of frames. Instead of gathering all frames at once,
+        it processes them in batches of max_frames_per_chunk frames.
+
+        Args:
+            chunk: Local tensor chunk for this rank
+            my_count: Number of frames this rank owns
+            total_S: Total number of frames across all ranks
+            sp_size: Number of ranks in the sequence parallel group
+            sp_group: Sequence parallel process group
+            dim: Dimension along which to gather (default: 1, the frame dimension)
+            max_frames_per_chunk: Maximum number of frames to gather at once (default: 16)
+
+        Returns:
+            Gathered tensor with all frames from all ranks
+        """
+        if sp_size <= 1:
+            return chunk
+
+        # If total frames is small enough, use original implementation
+        if total_S <= max_frames_per_chunk:
+            return self._frame_allgather_variable(chunk, my_count, total_S, sp_size, sp_group, dim)
+
+        # Calculate how many chunks we need
+        num_gather_chunks = (total_S + max_frames_per_chunk - 1) // max_frames_per_chunk
+
+        # Build frame distribution across ranks
+        if total_S >= sp_size:
+            base_chunk = total_S // sp_size
+            remainder = total_S % sp_size
+            counts = [(base_chunk + 1) if r < remainder else base_chunk
+                      for r in range(sp_size)]
+        else:
+            counts = [1 if r < total_S else 0 for r in range(sp_size)]
+
+        rank_in_sp = dist.get_group_rank(sp_group, dist.get_rank())
+
+        gathered_chunks = []
+
+        for gather_idx in range(num_gather_chunks):
+            # Determine which global frames are in this gather chunk
+            global_start = gather_idx * max_frames_per_chunk
+            global_end = min(global_start + max_frames_per_chunk, total_S)
+
+            # Determine which local frames this rank contributes
+            my_start = sum(counts[:rank_in_sp])
+            my_end = my_start + my_count
+
+            # Extract local frames that overlap with [global_start, global_end)
+            local_start = max(0, global_start - my_start)
+            local_end = min(my_count, global_end - my_start)
+
+            if local_start < local_end:
+                # This rank has frames in this chunk
+                slices = [slice(None)] * chunk.dim()
+                slices[dim] = slice(local_start, local_end)
+                my_chunk_data = chunk[tuple(slices)]
+            else:
+                # This rank has no frames in this chunk
+                shape = list(chunk.shape)
+                shape[dim] = 0
+                my_chunk_data = torch.zeros(shape, dtype=chunk.dtype, device=chunk.device)
+
+            # Calculate how many frames each rank contributes to this gather chunk
+            chunk_counts = []
+            for r in range(sp_size):
+                r_start = sum(counts[:r])
+                r_end = r_start + counts[r]
+                r_local_start = max(0, global_start - r_start)
+                r_local_end = min(counts[r], global_end - r_start)
+                chunk_counts.append(max(0, r_local_end - r_local_start))
+
+            max_chunk_count = max(chunk_counts)
+
+            # Pad if necessary
+            current_size = my_chunk_data.shape[dim]
+            if current_size < max_chunk_count:
+                pad_shape = list(my_chunk_data.shape)
+                pad_shape[dim] = max_chunk_count - current_size
+                padding = torch.zeros(pad_shape, dtype=chunk.dtype, device=chunk.device)
+                my_chunk_data = torch.cat([my_chunk_data, padding], dim=dim)
+
+            # All-gather this chunk
+            my_chunk_data = my_chunk_data.contiguous()
+            gathered_list = [torch.zeros_like(my_chunk_data) for _ in range(sp_size)]
+            dist.all_gather(gathered_list, my_chunk_data, group=sp_group)
+
+            # Extract valid frames from each rank
+            valid_frames = []
+            for r in range(sp_size):
+                cnt = chunk_counts[r]
+                if cnt > 0:
+                    slices = [slice(None)] * gathered_list[r].dim()
+                    slices[dim] = slice(0, cnt)
+                    valid_frames.append(gathered_list[r][tuple(slices)])
+
+            # Concatenate and store
+            if valid_frames:
+                gathered_chunks.append(torch.cat(valid_frames, dim=dim))
+
+            # Free memory
+            del gathered_list, my_chunk_data
+            if gather_idx < num_gather_chunks - 1:  # Don't empty cache on last iteration
+                torch.cuda.empty_cache()
+
+        # Concatenate all gathered chunks
+        return torch.cat(gathered_chunks, dim=dim).contiguous()
 
     def _gen_all_preds(
         self, token_list, imgs, patch_start_idx, views, cond_flags, is_inference, frames_chunk_size=1
