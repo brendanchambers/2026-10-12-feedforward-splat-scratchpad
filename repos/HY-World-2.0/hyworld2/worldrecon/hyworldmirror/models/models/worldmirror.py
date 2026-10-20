@@ -502,12 +502,12 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     if self.enable_depth_mask:
                         gs_dmask_chunk = torch.zeros(B, 0, H, W, dtype=imgs.dtype, device=imgs.device)
 
-                gs_feat = self._frame_allgather_variable_chunked(gs_feat_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16)
-                gs_depth = self._frame_allgather_variable_chunked(gs_depth_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16)
-                gs_depth_conf = self._frame_allgather_variable_chunked(gs_depth_conf_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16)
+                gs_feat = self._frame_allgather_variable_chunked(gs_feat_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=4)
+                gs_depth = self._frame_allgather_variable_chunked(gs_depth_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=4)
+                gs_depth_conf = self._frame_allgather_variable_chunked(gs_depth_conf_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=4)
                 if self.enable_depth_mask:
                     gs_depth_mask_logits = self._frame_allgather_variable_chunked(
-                        gs_dmask_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=16,
+                        gs_dmask_chunk, my_count, gs_S, sp_size, sp_group, dim=1, max_frames_per_chunk=4,
                     )
                     preds["gs_depth_mask_logits"] = gs_depth_mask_logits
                     preds["gs_depth_mask"] = gs_depth_mask_logits.sigmoid()
