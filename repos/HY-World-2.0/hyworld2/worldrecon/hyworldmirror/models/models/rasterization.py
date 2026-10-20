@@ -166,7 +166,21 @@ class GaussianSplatRenderer(nn.Module):
         head_dtype = next(self.gs_head.parameters()).dtype
         if gs_feats_reshape.dtype != head_dtype:
             gs_feats_reshape = gs_feats_reshape.to(head_dtype)
-        gs_params = self.gs_head(gs_feats_reshape)
+
+        # Process gs_head in chunks to avoid OOM with many frames
+        chunk_size = 32
+        bs = gs_feats_reshape.shape[0]
+        if bs > chunk_size:
+            gs_params_chunks = []
+            for i in range(0, bs, chunk_size):
+                chunk_end = min(i + chunk_size, bs)
+                chunk_out = self.gs_head(gs_feats_reshape[i:chunk_end])
+                gs_params_chunks.append(chunk_out)
+                del chunk_out
+            gs_params = torch.cat(gs_params_chunks, dim=0)
+            del gs_params_chunks
+        else:
+            gs_params = self.gs_head(gs_feats_reshape)
         gt_colors = images.permute(0, 1, 3, 4, 2)
         
         # 2) Select rendering cameras
