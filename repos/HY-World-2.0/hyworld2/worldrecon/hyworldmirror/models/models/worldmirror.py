@@ -619,7 +619,12 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
 
         rank_in_sp = dist.get_group_rank(sp_group, dist.get_rank())
 
-        gathered_chunks = []
+        # Pre-allocate the output tensor to avoid multiple concatenations
+        output_shape = list(chunk.shape)
+        output_shape[dim] = total_S
+        result = torch.empty(output_shape, dtype=chunk.dtype, device=chunk.device)
+
+        frames_written = 0
 
         for gather_idx in range(num_gather_chunks):
             # Determine which global frames are in this gather chunk
@@ -678,17 +683,24 @@ class WorldMirror(nn.Module, PyTorchModelHubMixin):
                     slices[dim] = slice(0, cnt)
                     valid_frames.append(gathered_list[r][tuple(slices)])
 
-            # Concatenate and store
+            # Copy this chunk's gathered frames into the pre-allocated result tensor
             if valid_frames:
-                gathered_chunks.append(torch.cat(valid_frames, dim=dim))
+                chunk_result = torch.cat(valid_frames, dim=dim)
+                chunk_size = chunk_result.shape[dim]
+
+                # Copy into result tensor
+                slices_dst = [slice(None)] * result.dim()
+                slices_dst[dim] = slice(frames_written, frames_written + chunk_size)
+                result[tuple(slices_dst)] = chunk_result
+
+                frames_written += chunk_size
+                del chunk_result
 
             # Free memory
-            del gathered_list, my_chunk_data
-            if gather_idx < num_gather_chunks - 1:  # Don't empty cache on last iteration
-                torch.cuda.empty_cache()
+            del gathered_list, my_chunk_data, valid_frames
+            torch.cuda.empty_cache()
 
-        # Concatenate all gathered chunks
-        return torch.cat(gathered_chunks, dim=dim).contiguous()
+        return result.contiguous()
 
     def _gen_all_preds(
         self, token_list, imgs, patch_start_idx, views, cond_flags, is_inference, frames_chunk_size=1
