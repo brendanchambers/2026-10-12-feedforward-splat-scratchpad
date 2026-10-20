@@ -168,7 +168,7 @@ class GaussianSplatRenderer(nn.Module):
             gs_feats_reshape = gs_feats_reshape.to(head_dtype)
 
         # Process gs_head in chunks to avoid OOM with many frames
-        chunk_size = 32
+        chunk_size = 8
         bs = gs_feats_reshape.shape[0]
         if bs > chunk_size:
             gs_params_chunks = []
@@ -177,6 +177,7 @@ class GaussianSplatRenderer(nn.Module):
                 chunk_out = self.gs_head(gs_feats_reshape[i:chunk_end])
                 gs_params_chunks.append(chunk_out)
                 del chunk_out
+                torch.cuda.empty_cache()
             gs_params = torch.cat(gs_params_chunks, dim=0)
             del gs_params_chunks
         else:

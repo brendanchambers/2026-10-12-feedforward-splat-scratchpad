@@ -13,7 +13,7 @@ import modal
 app = modal.App("feedforward-3dgs-hy-wm-2.0")
 
 # Image version - update this to force Modal to rebuild the image
-IMAGE_VERSION = "2026-10-20-chunked-allgather-v4-gshead32"
+IMAGE_VERSION = "2026-10-20-chunked-allgather-v5-gshead8"
 
 
 def download_models():
