@@ -180,8 +180,14 @@ class GaussianSplatRenderer(nn.Module):
                 torch.cuda.empty_cache()
             gs_params = torch.cat(gs_params_chunks, dim=0)
             del gs_params_chunks
+            torch.cuda.empty_cache()
         else:
             gs_params = self.gs_head(gs_feats_reshape)
+
+        # Free gs_feats_reshape to reduce memory pressure
+        del gs_feats_reshape
+        torch.cuda.empty_cache()
+
         gt_colors = images.permute(0, 1, 3, 4, 2)
         
         # 2) Select rendering cameras
@@ -489,12 +495,18 @@ class GaussianSplatRenderer(nn.Module):
         quats, scales, opacities, residual_sh, weights = torch.split(
             gs_params, [4, 3, 1, self.nums_sh * 3, 1], dim=-1
         )
+        del gs_params
+        torch.cuda.empty_cache()
 
         # Apply activation functions to Gaussian parameters
         splats["quats"] = act_gs.reg_dense_rotation(quats.reshape(B, S * H * W, 4))
+        del quats
         splats["scales"] = act_gs.reg_dense_scales(scales.reshape(B, S * H * W, 3)).clamp_max(0.3)
+        del scales
         splats["opacities"] = act_gs.reg_dense_opacities(opacities.reshape(B, S * H * W))
+        del opacities
         residual_sh = act_gs.reg_dense_sh(residual_sh.reshape(B, S * H * W, self.nums_sh * 3))
+        torch.cuda.empty_cache()
 
         # Handle spherical harmonics (SH) coefficients
         new_sh = torch.zeros_like(residual_sh)
